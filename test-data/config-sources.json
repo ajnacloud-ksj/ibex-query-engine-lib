@@ -1,0 +1,50 @@
+{
+  "data_sources": [
+    {
+      "id": "postgres-test",
+      "name": "PostgreSQL Test",
+      "type": "postgres",
+      "enabled": true,
+      "config": {
+        "host": "localhost",
+        "port": 5434,
+        "database": "testdb",
+        "user": "testuser",
+        "password": "testpass"
+      },
+      "metadata": {
+        "description": "Test PostgreSQL database with users and customers"
+      }
+    },
+    {
+      "id": "mysql-test",
+      "name": "MySQL Test",
+      "type": "mysql",
+      "enabled": true,
+      "config": {
+        "host": "localhost",
+        "port": 3308,
+        "database": "testdb",
+        "user": "testuser",
+        "password": "testpass"
+      },
+      "metadata": {
+        "description": "Test MySQL database with orders and products"
+      }
+    },
+    {
+      "id": "ibexdb-test",
+      "name": "IbexDB Test",
+      "type": "ibexdb",
+      "enabled": true,
+      "config": {
+        "tenant_id": "test",
+        "namespace": "default"
+      },
+      "metadata": {
+        "description": "Test Iceberg tables on MinIO"
+      }
+    }
+  ]
+}
+
