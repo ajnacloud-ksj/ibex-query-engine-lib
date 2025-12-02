@@ -110,8 +110,8 @@ class FederatedQueryEngine:
 
     def __init__(
         self,
-        duckdb_path: str = ":memory:",
-        config_manager: Optional[DataSourceConfigManager] = None,
+        duckdb_path: str = ':memory:',
+        config_manager: Optional[DataSourceConfigManager] = None
     ):
         """
         Initialize federated query engine
@@ -119,10 +119,19 @@ class FederatedQueryEngine:
         Args:
             duckdb_path: Path to DuckDB database (default: in-memory)
             config_manager: Config manager for automatic source loading
+            
+        Note:
+            For multi-tenant operations, tenant_id and namespace are passed
+            per-request, not at initialization.
         """
         self.sources: Dict[str, DataSourceConfig] = {}
         self.conn = duckdb.connect(duckdb_path)
         self.config_manager = config_manager
+        
+        # Initialize IbexDB operations engine (tenant_id will be per-request)
+        from ibexdb.operations import FullIcebergOperations as DatabaseOperations
+        self._db_ops = DatabaseOperations()
+        
         self._setup_duckdb()
 
         # Load sources from config manager if provided
@@ -174,7 +183,7 @@ class FederatedQueryEngine:
         Args:
             source_id: Unique identifier for this source
             source_type: Type of source (ibexdb, postgres, mysql, s3)
-            config: Source-specific configuration
+            config: Source configuration (can be full source object or just connection config)
 
         Returns:
             Self for method chaining
@@ -193,16 +202,27 @@ class FederatedQueryEngine:
             })
             ```
         """
-        source_config = DataSourceConfig(source_id, source_type, config)
+        # Handle both full source object and just connection config
+        # If config has a "config" key, it's the full source object
+        if "config" in config:
+            # Full source object - extract connection config
+            connection_config = config["config"]
+            # Store the full config for database name resolution
+            source_config = DataSourceConfig(source_id, source_type, config)
+        else:
+            # Just connection config - use as-is
+            connection_config = config
+            source_config = DataSourceConfig(source_id, source_type, {"config": config})
+        
         self.sources[source_id] = source_config
 
-        # Connect based on type
+        # Connect based on type (use connection_config for actual connection)
         if source_type == "ibexdb":
-            self._connect_ibexdb(source_config)
+            self._connect_ibexdb_with_config(source_config, connection_config)
         elif source_type == "postgres":
-            self._connect_postgres(source_config)
+            self._connect_postgres_with_config(source_config, connection_config)
         elif source_type == "mysql":
-            self._connect_mysql(source_config)
+            self._connect_mysql_with_config(source_config, connection_config)
         elif source_type == "s3":
             self._configure_s3(source_config)
         else:
@@ -210,6 +230,48 @@ class FederatedQueryEngine:
 
         logger.info(f"✅ Added source: {source_id} ({source_type})")
         return self
+    
+    def _connect_postgres_with_config(self, source_config: DataSourceConfig, connection_config: Dict[str, Any]):
+        """Connect to PostgreSQL source with explicit connection config"""
+        schema_name = source_config.source_id.replace("-", "_")
+
+        attach_sql = f"""
+        ATTACH 'host={connection_config["host"]} port={connection_config.get("port", 5432)}
+                dbname={connection_config["database"]} user={connection_config["user"]}
+                password={connection_config["password"]}'
+        AS {schema_name} (TYPE POSTGRES);
+        """
+
+        try:
+            self.conn.execute(attach_sql)
+            logger.info(f"✅ Connected PostgreSQL: {source_config.source_id}")
+        except Exception as e:
+            logger.error(f"❌ Failed to connect PostgreSQL: {e}")
+            raise
+    
+    def _connect_mysql_with_config(self, source_config: DataSourceConfig, connection_config: Dict[str, Any]):
+        """Connect to MySQL source with explicit connection config"""
+        schema_name = source_config.source_id.replace("-", "_")
+
+        attach_sql = f"""
+        ATTACH 'host={connection_config["host"]} port={connection_config.get("port", 3306)}
+                database={connection_config["database"]} user={connection_config["user"]}
+                password={connection_config["password"]}'
+        AS {schema_name} (TYPE MYSQL);
+        """
+
+        try:
+            self.conn.execute(attach_sql)
+            logger.info(f"✅ Connected MySQL: {source_config.source_id}")
+        except Exception as e:
+            logger.error(f"❌ Failed to connect MySQL: {e}")
+            raise
+    
+    def _connect_ibexdb_with_config(self, source_config: DataSourceConfig, connection_config: Dict[str, Any]):
+        """Connect to IbexDB source with explicit connection config"""
+        # For IbexDB, we don't need to do anything special
+        # The connection is handled by the DatabaseOperations instance
+        pass
 
     def _connect_ibexdb(self, source_config: DataSourceConfig):
         """Connect to IbexDB source"""
@@ -779,6 +841,251 @@ class FederatedQueryEngine:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
+
+    # ========================================================================
+    # CRUD Operations (Delegated to DatabaseOperations)
+    # ========================================================================
+
+    def create_table(self, request):
+        """Delegate create_table to DatabaseOperations (supports per-request tenant_id)"""
+        return self._db_ops.create_table(request)
+
+    def write(self, request):
+        """Delegate write to DatabaseOperations (supports per-request tenant_id)"""
+        return self._db_ops.write(request)
+
+    def update(self, request):
+        """Delegate update to DatabaseOperations (supports per-request tenant_id)"""
+        return self._db_ops.update(request)
+
+    def delete(self, request):
+        """Delegate delete to DatabaseOperations (supports per-request tenant_id)"""
+        return self._db_ops.delete(request)
+
+    def hard_delete(self, request):
+        """Delegate hard_delete to DatabaseOperations (supports per-request tenant_id)"""
+        return self._db_ops.hard_delete(request)
+
+    def compact(self, request):
+        """Delegate compact to DatabaseOperations (supports per-request tenant_id)"""
+        return self._db_ops.compact(request)
+
+    def list_tables(self, request):
+        """Delegate list_tables to DatabaseOperations (supports per-request tenant_id)"""
+        return self._db_ops.list_tables(request)
+
+    def describe_table(self, request):
+        """Delegate describe_table to DatabaseOperations (supports per-request tenant_id)"""
+        return self._db_ops.describe_table(request)
+    
+    def query_request(self, request: QueryRequest) -> QueryResponse:
+        """
+        Execute QueryRequest across all sources (Iceberg, Postgres, MySQL)
+        
+        This is the unified query method that works for both Iceberg and external sources.
+        It resolves logical database names and builds SQL from the QueryRequest.
+        
+        Args:
+            request: QueryRequest with table, filters, projections, etc.
+        
+        Returns:
+            QueryResponse with results
+        
+        Examples:
+            # Iceberg query
+            query_request(QueryRequest(table="users", filters=[...]))
+            
+            # Postgres query (logical name)
+            query_request(QueryRequest(table="userdb.users", filters=[...]))
+            
+            # MySQL query (logical name)
+            query_request(QueryRequest(table="orderdb.orders", aggregations=[...]))
+        """
+        # 1. Resolve logical database name to DuckDB schema name
+        resolved_table = self._resolve_table_name(request.table)
+        
+        # 2. Check if this is an Iceberg table (no dot in resolved name)
+        if "." not in resolved_table:
+            # Iceberg table - delegate to DatabaseOperations
+            return self._db_ops.query(request)
+        
+        # 3. External source - build SQL and execute via DuckDB
+        sql = self._build_sql_from_query_request(request, resolved_table)
+        
+        logger.info(f"🔍 Executing federated query: {sql}")
+        
+        try:
+            result = self.conn.execute(sql)
+            records = [dict(zip([col[0] for col in result.description], row)) 
+                      for row in result.fetchall()]
+            
+            return QueryResponse(
+                success=True,
+                data=QueryResponseData(
+                    records=records,
+                    query_metadata=QueryMetadata(
+                        row_count=len(records),
+                        execution_time_ms=0.0,  # TODO: Track actual execution time
+                        query_id=sql  # Include generated SQL for debugging
+                    )
+                ),
+                metadata=ResponseMetadata(request_id="federated-query", execution_time_ms=0.0)
+            )
+        except Exception as e:
+            logger.error(f"❌ Query failed: {e}")
+            logger.error(f"SQL: {sql}")
+            return QueryResponse(
+                success=False,
+                error=ErrorDetail(
+                    code="QUERY_ERROR",
+                    message=str(e)
+                ),
+                metadata=ResponseMetadata(request_id="federated-query", execution_time_ms=0.0)  # Add required fields
+            )
+    
+    def _resolve_table_name(self, table: str) -> str:
+        """
+        Resolve logical database name to DuckDB schema name
+        
+        Examples:
+            "users" → "users" (Iceberg, no change)
+            "userdb.users" → "postgres.users" (resolved)
+            "orderdb.orders" → "mysql.orders" (resolved)
+            "postgres.users" → "postgres.users" (already resolved)
+        """
+        if "." not in table:
+            return table  # Iceberg table, no resolution needed
+        
+        db_name, table_name = table.split(".", 1)
+        
+        # Look up logical database name → DuckDB schema name
+        for source in self.sources.values():
+            logical_name = source.config.get("database")
+            if logical_name and logical_name == db_name:
+                resolved = f"{source.source_id}.{table_name}"
+                logger.info(f"📍 Resolved: {table} → {resolved}")
+                return resolved
+        
+        # Not found - assume it's already a DuckDB schema name (e.g., "postgres.users")
+        logger.info(f"📍 Using as-is: {table}")
+        return table
+    
+    def _build_sql_from_query_request(self, request: QueryRequest, table: str) -> str:
+        """
+        Convert QueryRequest to SQL
+        
+        Args:
+            request: QueryRequest object
+            table: Resolved table name (e.g., "postgres.users")
+        
+        Returns:
+            SQL query string
+        """
+        # SELECT clause
+        if request.aggregations:
+            fields = []
+            for agg in request.aggregations:
+                func = agg.function.upper()
+                field = agg.field if agg.field != "*" else "*"
+                alias = agg.alias or f"{func.lower()}_{agg.field}"
+                fields.append(f"{func}({field}) as {alias}")
+        else:
+            fields = request.projection if request.projection else ["*"]
+        
+        sql = f"SELECT {', '.join(fields)} FROM {table}"
+        
+        # Table alias
+        if request.alias:
+            sql += f" AS {request.alias}"
+        
+        # JOIN clauses (for federated cross-database joins)
+        if request.join:
+            for join_clause in request.join:
+                # Resolve the join table name (might be logical name like "orderdb.orders")
+                join_table = self._resolve_table_name(join_clause.table)
+                
+                # Join type
+                join_type = join_clause.type.value.upper() if hasattr(join_clause.type, 'value') else join_clause.type.upper()
+                sql += f" {join_type} JOIN {join_table}"
+                
+                # Join table alias
+                if join_clause.alias:
+                    sql += f" AS {join_clause.alias}"
+                
+                # ON conditions
+                if join_clause.on:
+                    on_conditions = []
+                    for condition in join_clause.on:
+                        op_map = {"eq": "=", "ne": "!=", "gt": ">", "gte": ">=", "lt": "<", "lte": "<="}
+                        operator = op_map.get(condition.operator, "=")
+                        on_conditions.append(f"{condition.left_field} {operator} {condition.right_field}")
+                    sql += f" ON {' AND '.join(on_conditions)}"
+        
+        # WHERE clause
+        if request.filters:
+            conditions = []
+            for f in request.filters:
+                # Handle string vs numeric values
+                if isinstance(f.value, str):
+                    value = f"'{f.value}'"
+                elif isinstance(f.value, list):
+                    value = f"({', '.join([repr(v) for v in f.value])})"
+                else:
+                    value = str(f.value)
+                
+                # Map operators
+                op_map = {
+                    "eq": "=",
+                    "ne": "!=",
+                    "gt": ">",
+                    "gte": ">=",
+                    "lt": "<",
+                    "lte": "<=",
+                    "in": "IN",
+                    "like": "LIKE"
+                }
+                operator = op_map.get(f.operator, f.operator)
+                conditions.append(f"{f.field} {operator} {value}")
+            
+            sql += f" WHERE {' AND '.join(conditions)}"
+        
+        # GROUP BY clause
+        if request.group_by:
+            sql += f" GROUP BY {', '.join(request.group_by)}"
+        
+        # HAVING clause
+        if request.having:
+            having_conditions = []
+            for h in request.having:
+                value = f"'{h.value}'" if isinstance(h.value, str) else str(h.value)
+                op_map = {"eq": "=", "ne": "!=", "gt": ">", "gte": ">=", "lt": "<", "lte": "<="}
+                operator = op_map.get(h.operator, h.operator)
+                having_conditions.append(f"{h.field} {operator} {value}")
+            sql += f" HAVING {' AND '.join(having_conditions)}"
+        
+        # ORDER BY clause
+        if request.sort:
+            order_by = [f"{s.field} {s.order.upper() if hasattr(s.order, 'upper') else s.order.value.upper()}" for s in request.sort]
+            sql += f" ORDER BY {', '.join(order_by)}"
+        
+        # DISTINCT
+        if request.distinct:
+            sql = sql.replace("SELECT ", "SELECT DISTINCT ", 1)
+        
+        # LIMIT and OFFSET
+        if request.limit:
+            sql += f" LIMIT {request.limit}"
+        if request.offset:
+            sql += f" OFFSET {request.offset}"
+        
+        return sql
+
+
+    def query(self, request):
+        """Delegate query to DatabaseOperations (supports per-request tenant_id)"""
+        return self._db_ops.query(request)
+
+
 
 
 # ============================================================================
