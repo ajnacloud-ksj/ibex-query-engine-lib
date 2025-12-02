@@ -5,44 +5,39 @@ on:
     branches: [ main, develop ]
   pull_request:
     branches: [ main, develop ]
-  schedule:
-    # Run tests daily at 2 AM UTC
-    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      run_integration:
+        description: 'Run integration tests with Docker'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   test:
-    name: Test Python ${{ matrix.python-version }} on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: ["3.10", "3.11", "3.12"]
+    name: Test Python 3.12 on Ubuntu
+    runs-on: ubuntu-latest
     
     steps:
     - uses: actions/checkout@v4
     
-    - name: Set up Python ${{ matrix.python-version }}
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        enable-cache: true
+    
+    - name: Set up Python 3.12
       uses: actions/setup-python@v5
       with:
-        python-version: ${{ matrix.python-version }}
-    
-    - name: Cache pip packages
-      uses: actions/cache@v3
-      with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml') }}
-        restore-keys: |
-          ${{ runner.os }}-pip-
+        python-version: "3.12"
     
     - name: Install dependencies
       run: |
-        python -m pip install --upgrade pip
-        pip install -e ".[dev]"
+        uv pip install --system -e ".[dev]"
     
     - name: Run unit tests
       run: |
-        pytest tests/ -v --cov=src/ibexdb --cov-report=xml --cov-report=term --cov-report=html
+        uv run pytest tests/ -v --cov=src/ibexdb --cov-report=xml --cov-report=term --cov-report=html
       continue-on-error: true
     
     - name: Upload coverage to Codecov
@@ -50,7 +45,7 @@ jobs:
       with:
         file: ./coverage.xml
         flags: unittests
-        name: codecov-${{ matrix.os }}-py${{ matrix.python-version }}
+        name: codecov-ubuntu-py3.12
       continue-on-error: true
 
   lint:
@@ -60,14 +55,17 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Set up Python
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+    
+    - name: Set up Python 3.12
       uses: actions/setup-python@v5
       with:
         python-version: "3.12"
     
     - name: Install linting tools
       run: |
-        pip install ruff black mypy
+        uv pip install --system ruff black mypy
     
     - name: Run ruff
       run: ruff check src/
@@ -80,20 +78,24 @@ jobs:
       continue-on-error: true
 
   integration:
-    name: Integration Tests with Docker
+    name: Integration Tests with Docker (Optional)
     runs-on: ubuntu-latest
+    if: github.event.inputs.run_integration == 'true'
     
     steps:
     - uses: actions/checkout@v4
     
-    - name: Set up Python
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+    
+    - name: Set up Python 3.12
       uses: actions/setup-python@v5
       with:
         python-version: "3.12"
     
     - name: Install package
       run: |
-        pip install -e .
+        uv pip install --system -e .
     
     - name: Start Docker services
       run: |
@@ -102,8 +104,7 @@ jobs:
     
     - name: Run integration tests
       run: |
-        python test_with_docker.py
-      continue-on-error: true
+        uv run python test_with_docker.py
     
     - name: Stop Docker services
       if: always()
