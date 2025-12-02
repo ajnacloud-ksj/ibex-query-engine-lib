@@ -882,11 +882,15 @@ class FullIcebergOperations:
 
             return DeleteResponse(
                 success=update_result.success,
-                data=DeleteResponseData(
-                    records_deleted=update_result.data.records_updated if update_result.data else 0
-                )
-                if update_result.success
-                else None,
+                data=(
+                    DeleteResponseData(
+                        records_deleted=(
+                            update_result.data.records_updated if update_result.data else 0
+                        )
+                    )
+                    if update_result.success
+                    else None
+                ),
                 metadata=ResponseMetadata(request_id="temp", execution_time_ms=0),
                 error=update_result.error,
             )
@@ -1452,9 +1456,11 @@ class FullIcebergOperations:
                 return ListType(
                     element_id=1,
                     element=element_type,
-                    element_required=field_def.items.required
-                    if isinstance(field_def.items, FieldDefinition)
-                    else False,
+                    element_required=(
+                        field_def.items.required
+                        if isinstance(field_def.items, FieldDefinition)
+                        else False
+                    ),
                 )
 
             # Handle map type
@@ -1469,9 +1475,11 @@ class FullIcebergOperations:
                     key=key_iceberg_type,
                     value_id=2,
                     value=value_iceberg_type,
-                    value_required=field_def.value_type.required
-                    if isinstance(field_def.value_type, FieldDefinition)
-                    else False,
+                    value_required=(
+                        field_def.value_type.required
+                        if isinstance(field_def.value_type, FieldDefinition)
+                        else False
+                    ),
                 )
 
             # Handle struct/object type
