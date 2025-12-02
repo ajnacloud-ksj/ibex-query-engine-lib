@@ -6,19 +6,17 @@ preventing SQL injection while maintaining clean, readable code.
 """
 
 from typing import Any, Dict, List, Optional, Tuple, Union
-from datetime import datetime
-from decimal import Decimal
 
 from .models import (
-    QueryRequest,
+    AggregateField,
     AggregateRequest,
     Filter,
-    ProjectionField,
-    AggregateField,
     JoinClause,
     JoinCondition,
-    SortField,
     JoinType,
+    ProjectionField,
+    QueryRequest,
+    SortField,
     SortOrder,
 )
 
@@ -175,7 +173,9 @@ class TypeSafeQueryBuilder:
 
         return " ".join(sql_parts), params
 
-    def _build_select(self, projection: Optional[List[Union[str, ProjectionField]]], distinct: bool) -> str:
+    def _build_select(
+        self, projection: Optional[List[Union[str, ProjectionField]]], distinct: bool
+    ) -> str:
         """Build SELECT clause"""
         if not projection:
             projection = ["*"]
@@ -260,9 +260,7 @@ class TypeSafeQueryBuilder:
         return sql, params
 
     def _build_filters(
-        self,
-        filters: List[Filter],
-        clause_type: str = "WHERE"
+        self, filters: List[Filter], clause_type: str = "WHERE"
     ) -> Tuple[str, List[Any]]:
         """Build WHERE or HAVING clause from filters array (all ANDed)"""
         if not filters:
@@ -293,14 +291,14 @@ class TypeSafeQueryBuilder:
 
         # Map operators to SQL
         operator_map = {
-            'eq': '=',
-            'ne': '!=',
-            'gt': '>',
-            'gte': '>=',
-            'lt': '<',
-            'lte': '<=',
-            'in': 'IN',
-            'like': 'LIKE'
+            "eq": "=",
+            "ne": "!=",
+            "gt": ">",
+            "gte": ">=",
+            "lt": "<",
+            "lte": "<=",
+            "in": "IN",
+            "like": "LIKE",
         }
 
         sql_operator = operator_map.get(operator)
@@ -308,14 +306,14 @@ class TypeSafeQueryBuilder:
             raise ValueError(f"Unsupported operator: {operator}")
 
         # Handle IN operator
-        if operator == 'in':
+        if operator == "in":
             if not isinstance(value, list):
                 raise ValueError(f"IN operator requires a list value, got {type(value)}")
-            placeholders = ', '.join([self.param_style] * len(value))
+            placeholders = ", ".join([self.param_style] * len(value))
             return f"{field} IN ({placeholders})", value
 
         # Handle LIKE operator
-        elif operator == 'like':
+        elif operator == "like":
             return f"{field} LIKE {self.param_style}", [value]
 
         # Handle standard comparison operators
@@ -348,15 +346,12 @@ class TypeSafeQueryBuilder:
         params = []
 
         # Direct value (implicit equals)
-        if not isinstance(value, (dict, FilterOperator)):
+        if not isinstance(value, dict):
             params.append(value)
             return f"{field} = {self.param_style}", params
 
-        # FilterOperator or dict with operators
-        if isinstance(value, FilterOperator):
-            op_dict = value.model_dump(exclude_none=True)
-        else:
-            op_dict = value
+        # Dict with operators
+        op_dict = value
 
         # Process operators
         for op, op_value in op_dict.items():
@@ -472,56 +467,59 @@ class TypeSafeQueryBuilder:
     def _build_aggregate_field(self, agg: AggregateField) -> str:
         """Build aggregation expression"""
         distinct_str = "DISTINCT " if agg.distinct else ""
+        func = agg.function.lower()
 
-        if agg.op == AggregateOp.COUNT:
+        if func == "count":
             if agg.field:
                 return f"COUNT({distinct_str}{agg.field})"
             else:
                 return "COUNT(*)"
 
-        elif agg.op == AggregateOp.COUNT_DISTINCT:
+        elif func == "count_distinct":
             if not agg.field:
                 raise ValueError("COUNT_DISTINCT requires a field")
             return f"COUNT(DISTINCT {agg.field})"
 
-        elif agg.op == AggregateOp.SUM:
+        elif func == "sum":
             return f"SUM({distinct_str}{agg.field})"
 
-        elif agg.op == AggregateOp.AVG:
+        elif func == "avg":
             return f"AVG({distinct_str}{agg.field})"
 
-        elif agg.op == AggregateOp.MIN:
+        elif func == "min":
             return f"MIN({agg.field})"
 
-        elif agg.op == AggregateOp.MAX:
+        elif func == "max":
             return f"MAX({agg.field})"
 
-        elif agg.op == AggregateOp.MEDIAN:
+        elif func == "median":
             if self.dialect == "duckdb":
                 return f"MEDIAN({agg.field})"
             else:
                 # Fallback for dialects without MEDIAN
                 return f"PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY {agg.field})"
 
-        elif agg.op == AggregateOp.PERCENTILE:
+        elif func == "percentile":
             if self.dialect == "duckdb":
                 return f"PERCENTILE_CONT({agg.field}, {agg.percentile_value})"
             else:
-                return f"PERCENTILE_CONT({agg.percentile_value}) WITHIN GROUP (ORDER BY {agg.field})"
+                return (
+                    f"PERCENTILE_CONT({agg.percentile_value}) WITHIN GROUP (ORDER BY {agg.field})"
+                )
 
-        elif agg.op == AggregateOp.STD_DEV:
+        elif func == "std_dev":
             return f"STDDEV({agg.field})"
 
-        elif agg.op == AggregateOp.VARIANCE:
+        elif func == "variance":
             return f"VARIANCE({agg.field})"
 
-        elif agg.op == AggregateOp.FIRST:
+        elif func == "first":
             if self.dialect == "duckdb":
                 return f"FIRST({agg.field})"
             else:
                 return f"FIRST_VALUE({agg.field})"
 
-        elif agg.op == AggregateOp.LAST:
+        elif func == "last":
             if self.dialect == "duckdb":
                 return f"LAST({agg.field})"
             else:
@@ -554,6 +552,7 @@ class TypeSafeQueryBuilder:
 # Usage Examples
 # ============================================================================
 
+
 def example_usage():
     """Demonstrate usage of type-safe query builder"""
 
@@ -563,12 +562,9 @@ def example_usage():
     query1 = QueryRequest(
         table="users",
         projection=["id", "name", "email"],
-        filter={
-            "status": {"eq": "active"},
-            "age": {"gte": 18}
-        },
+        filter={"status": {"eq": "active"}, "age": {"gte": 18}},
         sort=[SortField(field="created_at", order=SortOrder.DESC)],
-        limit=10
+        limit=10,
     )
 
     sql, params = builder.build_query(query1)
@@ -584,15 +580,10 @@ def example_usage():
             "and": [
                 {"category": {"in": ["electronics", "books"]}},
                 {"price": {"between": (10, 100)}},
-                {
-                    "or": [
-                        {"status": {"eq": "active"}},
-                        {"featured": {"eq": True}}
-                    ]
-                }
+                {"or": [{"status": {"eq": "active"}}, {"featured": {"eq": True}}]},
             ]
         },
-        limit=50
+        limit=50,
     )
 
     sql, params = builder.build_query(query2)
@@ -607,13 +598,13 @@ def example_usage():
         filter={"status": {"eq": "completed"}},
         group_by=["customer_id"],
         aggregations=[
-            AggregateField(op=AggregateOp.COUNT, field=None, alias="total_orders"),
-            AggregateField(op=AggregateOp.SUM, field="amount", alias="revenue"),
-            AggregateField(op=AggregateOp.AVG, field="amount", alias="avg_order")
+            AggregateField(function="count", field=None, alias="total_orders"),
+            AggregateField(function="sum", field="amount", alias="revenue"),
+            AggregateField(function="avg", field="amount", alias="avg_order"),
         ],
         having={"revenue": {"gt": 1000}},
         sort=[SortField(field="revenue", order=SortOrder.DESC)],
-        limit=100
+        limit=100,
     )
 
     sql, params = builder.build_aggregate(agg_query)
@@ -631,21 +622,17 @@ def example_usage():
                 type=JoinType.INNER,
                 table="customers",
                 alias="c",
-                on=[JoinCondition(left_field="o.customer_id", right_field="c.id")]
+                on=[JoinCondition(left_field="o.customer_id", right_field="c.id")],
             )
         ],
         projection=[
             "o.id",
             "o.total",
             ProjectionField(field="c.name", alias="customer_name"),
-            ProjectionField(
-                field="o.created_at",
-                date_format="%Y-%m-%d",
-                alias="order_date"
-            )
+            ProjectionField(field="o.created_at", date_format="%Y-%m-%d", alias="order_date"),
         ],
         filter={"o.status": {"eq": "shipped"}},
-        sort=[SortField(field="o.created_at", order=SortOrder.DESC)]
+        sort=[SortField(field="o.created_at", order=SortOrder.DESC)],
     )
 
     sql, params = builder.build_query(query4)

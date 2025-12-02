@@ -11,65 +11,64 @@ __license__ = "MIT"
 
 # Setup logging on import
 from ibexdb.logger import setup_logging
+
 setup_logging()
 
 # Core client
-from ibexdb.client import IbexDB
-
-# Federated Query Engine
-from ibexdb.federated import FederatedQueryEngine, create_federated_engine
+from ibexdb.client import IbexDB  # noqa: E402
 
 # Configuration
-from ibexdb.config import Config as IbexConfig, get_config
-from ibexdb.config_manager import DataSourceConfigManager
+from ibexdb.config import Config as IbexConfig  # noqa: E402
+from ibexdb.config import get_config  # noqa: E402
+from ibexdb.config_manager import DataSourceConfigManager  # noqa: E402
+
+# Federated Query Engine
+from ibexdb.federated import FederatedQueryEngine, create_federated_engine  # noqa: E402
 
 # Models - Request Models
-from ibexdb.models import (
-    # Core operation requests
-    QueryRequest,
-    WriteRequest,
-    UpdateRequest,
-    DeleteRequest,
-    HardDeleteRequest,
+from ibexdb.models import (  # noqa: E402
+    AggregateField,
     CompactRequest,
-    CreateTableRequest,
-    ListTablesRequest,
-    DescribeTableRequest,
-    
-    # Response models
-    QueryResponse,
-    WriteResponse,
-    UpdateResponse,
-    DeleteResponse,
-    HardDeleteResponse,
     CompactResponse,
+    CreateTableRequest,
     CreateTableResponse,
-    ListTablesResponse,
+    DeleteMode,
+    DeleteRequest,
+    DeleteResponse,
+    DescribeTableRequest,
     DescribeTableResponse,
-    
+    FieldDefinition,
+    FieldType,
     # Supporting models
     Filter,
-    SortField,
-    AggregateField,
-    ProjectionField,
-    SchemaDefinition,
-    FieldDefinition,
-    PartitionConfig,
-    TableProperties,
-    
+    HardDeleteRequest,
+    HardDeleteResponse,
+    ListTablesRequest,
+    ListTablesResponse,
     # Enums
     OperationType,
+    PartitionConfig,
+    ProjectionField,
+    # Core operation requests
+    QueryRequest,
+    # Response models
+    QueryResponse,
+    SchemaDefinition,
+    SortField,
     SortOrder,
+    TableProperties,
+    UpdateRequest,
+    UpdateResponse,
     WriteMode,
-    DeleteMode,
-    FieldType,
+    WriteRequest,
+    WriteResponse,
 )
 
 # Operations (advanced usage)
-from ibexdb.operations import FullIcebergOperations as DatabaseOperations
+from ibexdb.operations import FullIcebergOperations as DatabaseOperations  # noqa: E402
 
 # Query Builder (advanced usage)
-from ibexdb.query_builder import TypeSafeQueryBuilder
+from ibexdb.query_builder import TypeSafeQueryBuilder  # noqa: E402
 
 __all__ = [
     # Core
@@ -81,7 +80,6 @@ __all__ = [
     "DataSourceConfigManager",
     "DatabaseOperations",
     "TypeSafeQueryBuilder",
-    
     # Request Models
     "QueryRequest",
     "WriteRequest",
@@ -92,7 +90,6 @@ __all__ = [
     "CreateTableRequest",
     "ListTablesRequest",
     "DescribeTableRequest",
-    
     # Response Models
     "QueryResponse",
     "WriteResponse",
@@ -103,7 +100,6 @@ __all__ = [
     "CreateTableResponse",
     "ListTablesResponse",
     "DescribeTableResponse",
-    
     # Supporting Models
     "Filter",
     "SortField",
@@ -113,7 +109,6 @@ __all__ = [
     "FieldDefinition",
     "PartitionConfig",
     "TableProperties",
-    
     # Enums
     "OperationType",
     "SortOrder",
@@ -121,4 +116,3 @@ __all__ = [
     "DeleteMode",
     "FieldType",
 ]
-

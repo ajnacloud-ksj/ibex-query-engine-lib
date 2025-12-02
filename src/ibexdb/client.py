@@ -5,69 +5,85 @@ This provides a clean, pythonic API for interacting with IbexDB.
 It wraps the underlying DatabaseOperations with a simpler interface.
 """
 
-import os
 import logging
-from typing import Any, Dict, List, Optional, Union
+import os
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
-from ibexdb.config import Config as IbexConfig, get_config
+from ibexdb.config import Config as IbexConfig
+from ibexdb.config import get_config
+from ibexdb.models import (
+    AggregateField,
+    CompactRequest,
+    CompactResponse,
+    CreateTableRequest,
+    CreateTableResponse,
+    DeleteMode,
+    DeleteRequest,
+    DeleteResponse,
+    DescribeTableRequest,
+    DescribeTableResponse,
+    Filter,
+    HardDeleteRequest,
+    HardDeleteResponse,
+    ListTablesRequest,
+    ListTablesResponse,
+    PartitionConfig,
+    QueryRequest,
+    QueryResponse,
+    SchemaDefinition,
+    SortField,
+    TableProperties,
+    UpdateRequest,
+    UpdateResponse,
+    WriteMode,
+    WriteRequest,
+    WriteResponse,
+)
+from ibexdb.operations import FullIcebergOperations as DatabaseOperations
 
 logger = logging.getLogger(__name__)
-from ibexdb.operations import FullIcebergOperations as DatabaseOperations
-from ibexdb.models import (
-    QueryRequest, QueryResponse,
-    WriteRequest, WriteResponse, WriteMode,
-    UpdateRequest, UpdateResponse,
-    DeleteRequest, DeleteResponse, DeleteMode,
-    HardDeleteRequest, HardDeleteResponse,
-    CompactRequest, CompactResponse,
-    CreateTableRequest, CreateTableResponse,
-    ListTablesRequest, ListTablesResponse,
-    DescribeTableRequest, DescribeTableResponse,
-    Filter, SortField, AggregateField,
-    SchemaDefinition, PartitionConfig, TableProperties,
-)
 
 
 class IbexDB:
     """
     High-level client for IbexDB operations
-    
+
     This class provides a clean, pythonic interface for database operations.
     It handles request/response conversion and provides sensible defaults.
-    
+
     Example:
         ```python
         from ibexdb import IbexDB
-        
+
         # Initialize from environment
         db = IbexDB.from_env()
-        
+
         # Or with explicit config
         db = IbexDB(tenant_id="my_app", namespace="production")
-        
+
         # Query data
         results = db.query("users", filters=[
             {"field": "age", "operator": "gte", "value": 18}
         ])
-        
+
         # Write data
         db.write("users", records=[
             {"id": 1, "name": "Alice", "age": 30}
         ])
         ```
     """
-    
+
     def __init__(
         self,
         tenant_id: str = "default",
         namespace: str = "default",
         config: Optional[IbexConfig] = None,
-        operations: Optional[DatabaseOperations] = None
+        operations: Optional[DatabaseOperations] = None,
     ):
         """
         Initialize IbexDB client
-        
+
         Args:
             tenant_id: Multi-tenant identifier (default: "default")
             namespace: Table namespace (default: "default")
@@ -78,23 +94,19 @@ class IbexDB:
         self.namespace = namespace
         self._config = config or get_config()
         self._ops = operations or DatabaseOperations()
-    
+
     @classmethod
-    def from_env(
-        cls,
-        tenant_id: Optional[str] = None,
-        namespace: Optional[str] = None
-    ) -> "IbexDB":
+    def from_env(cls, tenant_id: Optional[str] = None, namespace: Optional[str] = None) -> "IbexDB":
         """
         Create IbexDB client from environment variables
-        
+
         Args:
             tenant_id: Override tenant_id (default: from env or "default")
             namespace: Override namespace (default: from env or "default")
-            
+
         Returns:
             IbexDB client instance
-            
+
         Environment Variables:
             IBEX_TENANT_ID: Default tenant ID
             IBEX_NAMESPACE: Default namespace
@@ -103,11 +115,11 @@ class IbexDB:
         tenant_id = tenant_id or os.getenv("IBEX_TENANT_ID", "default")
         namespace = namespace or os.getenv("IBEX_NAMESPACE", "default")
         return cls(tenant_id=tenant_id, namespace=namespace)
-    
+
     # ========================================================================
     # Query Operations
     # ========================================================================
-    
+
     def query(
         self,
         table: str,
@@ -125,7 +137,7 @@ class IbexDB:
     ) -> QueryResponse:
         """
         Query data from a table
-        
+
         Args:
             table: Table name
             projection: Fields to select (default: ["*"])
@@ -139,10 +151,10 @@ class IbexDB:
             as_of: Query data as of timestamp (time travel)
             tenant_id: Override tenant_id
             namespace: Override namespace
-            
+
         Returns:
             QueryResponse with data and metadata
-            
+
         Example:
             ```python
             results = db.query(
@@ -155,7 +167,7 @@ class IbexDB:
                 sort=[{"field": "name", "order": "asc"}],
                 limit=100
             )
-            
+
             for record in results.data.records:
                 print(record["name"])
             ```
@@ -176,14 +188,14 @@ class IbexDB:
             distinct=distinct,
             as_of=as_of,
         )
-        
+
         # Execute query
         return self._ops.query(request)
-    
+
     # ========================================================================
     # Write Operations
     # ========================================================================
-    
+
     def write(
         self,
         table: str,
@@ -197,7 +209,7 @@ class IbexDB:
     ) -> WriteResponse:
         """
         Write records to a table
-        
+
         Args:
             table: Table name
             records: List of records to write
@@ -207,10 +219,10 @@ class IbexDB:
             properties: Table properties
             tenant_id: Override tenant_id
             namespace: Override namespace
-            
+
         Returns:
             WriteResponse with write results
-            
+
         Example:
             ```python
             response = db.write(
@@ -221,7 +233,7 @@ class IbexDB:
                 ],
                 mode="append"
             )
-            
+
             print(f"Wrote {response.data.records_written} records")
             ```
         """
@@ -236,31 +248,21 @@ class IbexDB:
             partition=PartitionConfig(**partition) if partition else None,
             properties=TableProperties(**properties) if properties else None,
         )
-        
+
         return self._ops.write(request)
-    
-    def insert(
-        self,
-        table: str,
-        records: List[Dict[str, Any]],
-        **kwargs
-    ) -> WriteResponse:
+
+    def insert(self, table: str, records: List[Dict[str, Any]], **kwargs) -> WriteResponse:
         """Alias for write() with mode='append'"""
         return self.write(table, records, mode="append", **kwargs)
-    
-    def upsert(
-        self,
-        table: str,
-        records: List[Dict[str, Any]],
-        **kwargs
-    ) -> WriteResponse:
+
+    def upsert(self, table: str, records: List[Dict[str, Any]], **kwargs) -> WriteResponse:
         """Alias for write() with mode='upsert'"""
         return self.write(table, records, mode="upsert", **kwargs)
-    
+
     # ========================================================================
     # Update Operations
     # ========================================================================
-    
+
     def update(
         self,
         table: str,
@@ -271,17 +273,17 @@ class IbexDB:
     ) -> UpdateResponse:
         """
         Update records matching filters
-        
+
         Args:
             table: Table name
             updates: Dictionary of field -> new value
             filters: Filter conditions (all ANDed together)
             tenant_id: Override tenant_id
             namespace: Override namespace
-            
+
         Returns:
             UpdateResponse with update results
-            
+
         Example:
             ```python
             response = db.update(
@@ -291,7 +293,7 @@ class IbexDB:
                     {"field": "last_login", "operator": "gte", "value": "2024-01-01"}
                 ]
             )
-            
+
             print(f"Updated {response.data.records_updated} records")
             ```
         """
@@ -303,13 +305,13 @@ class IbexDB:
             updates=updates,
             filters=[Filter(**f) for f in filters],
         )
-        
+
         return self._ops.update(request)
-    
+
     # ========================================================================
     # Delete Operations
     # ========================================================================
-    
+
     def delete(
         self,
         table: str,
@@ -320,17 +322,17 @@ class IbexDB:
     ) -> DeleteResponse:
         """
         Delete records matching filters (soft delete by default)
-        
+
         Args:
             table: Table name
             filters: Filter conditions (all ANDed together)
             mode: "soft" (mark as deleted) or "hard" (physical removal)
             tenant_id: Override tenant_id
             namespace: Override namespace
-            
+
         Returns:
             DeleteResponse with delete results
-            
+
         Example:
             ```python
             # Soft delete (reversible)
@@ -339,7 +341,7 @@ class IbexDB:
                 filters=[{"field": "status", "operator": "eq", "value": "inactive"}],
                 mode="soft"
             )
-            
+
             print(f"Deleted {response.data.records_deleted} records")
             ```
         """
@@ -351,9 +353,9 @@ class IbexDB:
             filters=[Filter(**f) for f in filters],
             mode=DeleteMode(mode),
         )
-        
+
         return self._ops.delete(request)
-    
+
     def hard_delete(
         self,
         table: str,
@@ -364,20 +366,20 @@ class IbexDB:
     ) -> HardDeleteResponse:
         """
         Physically delete records (irreversible)
-        
+
         Args:
             table: Table name
             filters: Filter conditions (all ANDed together)
             confirm: Must be True to confirm physical deletion
             tenant_id: Override tenant_id
             namespace: Override namespace
-            
+
         Returns:
             HardDeleteResponse with delete results
-            
+
         Warning:
             This operation is irreversible. Data will be physically removed.
-            
+
         Example:
             ```python
             response = db.hard_delete(
@@ -388,10 +390,8 @@ class IbexDB:
             ```
         """
         if not confirm:
-            raise ValueError(
-                "hard_delete requires confirm=True to prevent accidental data loss"
-            )
-        
+            raise ValueError("hard_delete requires confirm=True to prevent accidental data loss")
+
         request = HardDeleteRequest(
             operation="HARD_DELETE",
             tenant_id=tenant_id or self.tenant_id,
@@ -400,13 +400,13 @@ class IbexDB:
             filters=[Filter(**f) for f in filters],
             confirm=confirm,
         )
-        
+
         return self._ops.hard_delete(request)
-    
+
     # ========================================================================
     # Table Operations
     # ========================================================================
-    
+
     def create_table(
         self,
         table: str,
@@ -419,7 +419,7 @@ class IbexDB:
     ) -> CreateTableResponse:
         """
         Create a new table
-        
+
         Args:
             table: Table name
             schema: Table schema definition
@@ -428,10 +428,10 @@ class IbexDB:
             if_not_exists: Don't error if table exists
             tenant_id: Override tenant_id
             namespace: Override namespace
-            
+
         Returns:
             CreateTableResponse with creation results
-            
+
         Example:
             ```python
             db.create_table(
@@ -458,9 +458,9 @@ class IbexDB:
             properties=TableProperties(**properties) if properties else None,
             if_not_exists=if_not_exists,
         )
-        
+
         return self._ops.create_table(request)
-    
+
     def list_tables(
         self,
         tenant_id: Optional[str] = None,
@@ -468,14 +468,14 @@ class IbexDB:
     ) -> ListTablesResponse:
         """
         List all tables in namespace
-        
+
         Args:
             tenant_id: Override tenant_id
             namespace: Override namespace
-            
+
         Returns:
             ListTablesResponse with table names
-            
+
         Example:
             ```python
             response = db.list_tables()
@@ -488,9 +488,9 @@ class IbexDB:
             tenant_id=tenant_id or self.tenant_id,
             namespace=namespace or self.namespace,
         )
-        
+
         return self._ops.list_tables(request)
-    
+
     def describe_table(
         self,
         table: str,
@@ -499,15 +499,15 @@ class IbexDB:
     ) -> DescribeTableResponse:
         """
         Get table schema and metadata
-        
+
         Args:
             table: Table name
             tenant_id: Override tenant_id
             namespace: Override namespace
-            
+
         Returns:
             DescribeTableResponse with table details
-            
+
         Example:
             ```python
             response = db.describe_table("users")
@@ -522,13 +522,13 @@ class IbexDB:
             namespace=namespace or self.namespace,
             table=table,
         )
-        
+
         return self._ops.describe_table(request)
-    
+
     # ========================================================================
     # Maintenance Operations
     # ========================================================================
-    
+
     def compact(
         self,
         table: str,
@@ -541,7 +541,7 @@ class IbexDB:
     ) -> CompactResponse:
         """
         Compact table to merge small files
-        
+
         Args:
             table: Table name
             force: Force compaction even if thresholds not met
@@ -550,10 +550,10 @@ class IbexDB:
             snapshot_retention_hours: Hours to retain snapshots
             tenant_id: Override tenant_id
             namespace: Override namespace
-            
+
         Returns:
             CompactResponse with compaction results
-            
+
         Example:
             ```python
             response = db.compact(
@@ -562,7 +562,7 @@ class IbexDB:
                 target_file_size_mb=128,
                 expire_snapshots=True
             )
-            
+
             if response.data.compacted:
                 stats = response.data.stats
                 print(f"Files: {stats.files_before} → {stats.files_after}")
@@ -579,13 +579,13 @@ class IbexDB:
             expire_snapshots=expire_snapshots,
             snapshot_retention_hours=snapshot_retention_hours,
         )
-        
+
         return self._ops.compact(request)
-    
+
     # ========================================================================
     # Utility Methods
     # ========================================================================
-    
+
     def table_exists(
         self,
         table: str,
@@ -594,12 +594,12 @@ class IbexDB:
     ) -> bool:
         """
         Check if table exists
-        
+
         Args:
             table: Table name
             tenant_id: Override tenant_id
             namespace: Override namespace
-            
+
         Returns:
             True if table exists, False otherwise
         """
@@ -608,7 +608,7 @@ class IbexDB:
             return table in response.data.tables
         except Exception:
             return False
-    
+
     def get_row_count(
         self,
         table: str,
@@ -617,12 +617,12 @@ class IbexDB:
     ) -> Optional[int]:
         """
         Get approximate row count for table
-        
+
         Args:
             table: Table name
             tenant_id: Override tenant_id
             namespace: Override namespace
-            
+
         Returns:
             Row count or None if unavailable
         """
@@ -631,11 +631,11 @@ class IbexDB:
             return response.data.table.row_count
         except Exception:
             return None
-    
+
     # ========================================================================
     # SQL Query Support (Alternative to Structured API)
     # ========================================================================
-    
+
     def execute_sql(
         self,
         sql: str,
@@ -644,18 +644,18 @@ class IbexDB:
     ) -> List[Dict[str, Any]]:
         """
         Execute raw SQL query on Iceberg tables
-        
+
         Note: This uses DuckDB's iceberg_scan() function under the hood.
         For complex queries or joins across sources, use FederatedQueryEngine instead.
-        
+
         Args:
             sql: SQL query string
             tenant_id: Override tenant_id
             namespace: Override namespace
-            
+
         Returns:
             List of result records
-            
+
         Example:
             ```python
             results = db.execute_sql(\"\"\"
@@ -668,10 +668,10 @@ class IbexDB:
             ```
         """
         import duckdb
-        
+
         # Initialize DuckDB connection
-        conn = duckdb.connect(':memory:')
-        
+        conn = duckdb.connect(":memory:")
+
         # Load required extensions
         try:
             conn.execute("INSTALL iceberg;")
@@ -680,30 +680,26 @@ class IbexDB:
             conn.execute("LOAD httpfs;")
         except Exception as e:
             logger.warning(f"Extension loading failed: {e}")
-        
+
         # Configure S3 access
         s3_config = self._config.s3
         conn.execute(f"SET s3_endpoint='{s3_config.get('endpoint', '')}';")
         conn.execute(f"SET s3_region='{s3_config.get('region', 'us-east-1')}';")
-        
-        if 'access_key_id' in s3_config:
+
+        if "access_key_id" in s3_config:
             conn.execute(f"SET s3_access_key_id='{s3_config['access_key_id']}';")
             conn.execute(f"SET s3_secret_access_key='{s3_config['secret_access_key']}';")
-        
+
         # Execute query
         try:
             result = conn.execute(sql)
             columns = [desc[0] for desc in result.description]
             rows = result.fetchall()
-            
+
             # Convert to list of dicts
-            return [
-                {col: val for col, val in zip(columns, row)}
-                for row in rows
-            ]
+            return [{col: val for col, val in zip(columns, row)} for row in rows]
         finally:
             conn.close()
-    
+
     def __repr__(self) -> str:
         return f"IbexDB(tenant_id='{self.tenant_id}', namespace='{self.namespace}')"
-

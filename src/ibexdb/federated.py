@@ -13,19 +13,21 @@ Key Features:
 """
 
 import logging
-from typing import Any, Dict, List, Optional, Union
-from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 import duckdb
 import polars as pl
 
 from ibexdb import IbexDB
-from ibexdb.models import (
-    Filter, SortField, AggregateField,
-    QueryRequest, QueryResponse, QueryResponseData, QueryMetadata,
-    ResponseMetadata, ErrorDetail
-)
 from ibexdb.config_manager import DataSourceConfigManager
+from ibexdb.models import (
+    ErrorDetail,
+    QueryMetadata,
+    QueryRequest,
+    QueryResponse,
+    QueryResponseData,
+    ResponseMetadata,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,15 +36,11 @@ logger = logging.getLogger(__name__)
 # Data Source Configuration Models
 # ============================================================================
 
+
 class DataSourceConfig:
     """Configuration for a data source"""
-    
-    def __init__(
-        self,
-        source_id: str,
-        source_type: str,
-        config: Dict[str, Any]
-    ):
+
+    def __init__(self, source_id: str, source_type: str, config: Dict[str, Any]):
         self.source_id = source_id
         self.source_type = source_type
         self.config = config
@@ -53,30 +51,31 @@ class DataSourceConfig:
 # Federated Query Engine
 # ============================================================================
 
+
 class FederatedQueryEngine:
     """
     Federated query engine that can query across multiple data sources
-    
+
     Supports:
     - IbexDB (Iceberg tables on S3)
     - PostgreSQL
     - MySQL
     - S3 Parquet files
     - And more via DuckDB extensions
-    
+
     Example:
         ```python
         from ibexdb import FederatedQueryEngine
-        
+
         # Initialize engine
         fed = FederatedQueryEngine()
-        
+
         # Add data sources
         fed.add_source("ibexdb", type="ibexdb", config={
             "tenant_id": "company",
             "namespace": "production"
         })
-        
+
         fed.add_source("postgres", type="postgres", config={
             "host": "localhost",
             "port": 5432,
@@ -84,7 +83,7 @@ class FederatedQueryEngine:
             "user": "user",
             "password": "pass"
         })
-        
+
         # Structured query (no SQL!)
         result = fed.query(
             sources={
@@ -98,7 +97,7 @@ class FederatedQueryEngine:
                 "on": {"users.id": "events.user_id"}
             }
         )
-        
+
         # Or use SQL for complex queries
         result = fed.execute_sql(\"\"\"
             SELECT u.*, COUNT(e.id) as event_count
@@ -108,15 +107,15 @@ class FederatedQueryEngine:
         \"\"\")
         ```
     """
-    
+
     def __init__(
         self,
-        duckdb_path: str = ':memory:',
-        config_manager: Optional[DataSourceConfigManager] = None
+        duckdb_path: str = ":memory:",
+        config_manager: Optional[DataSourceConfigManager] = None,
     ):
         """
         Initialize federated query engine
-        
+
         Args:
             duckdb_path: Path to DuckDB database (default: in-memory)
             config_manager: Config manager for automatic source loading
@@ -125,17 +124,17 @@ class FederatedQueryEngine:
         self.conn = duckdb.connect(duckdb_path)
         self.config_manager = config_manager
         self._setup_duckdb()
-        
+
         # Load sources from config manager if provided
         if self.config_manager:
             self._load_sources_from_config()
-        
+
         logger.info("✅ Federated Query Engine initialized")
-    
+
     def _setup_duckdb(self):
         """Setup DuckDB with required extensions"""
-        extensions = ['httpfs', 'postgres_scanner', 'mysql_scanner', 'iceberg']
-        
+        extensions = ["httpfs", "postgres_scanner", "mysql_scanner", "iceberg"]
+
         for ext in extensions:
             try:
                 self.conn.execute(f"INSTALL {ext};")
@@ -143,52 +142,49 @@ class FederatedQueryEngine:
                 logger.debug(f"✅ Loaded extension: {ext}")
             except Exception as e:
                 logger.warning(f"⚠️  Failed to load {ext}: {e}")
-    
+
     def _load_sources_from_config(self):
         """Load data sources from config manager"""
         logger.info("📡 Loading data sources from Config Manager")
-        
+
         sources = self.config_manager.get_all_sources(enabled_only=True)
-        
+
         for source_id, source_config in sources.items():
             try:
                 self.add_source(
                     source_id=source_id,
-                    source_type=source_config['type'],
-                    config=source_config['config']
+                    source_type=source_config["type"],
+                    config=source_config["config"],
                 )
             except Exception as e:
                 logger.error(f"❌ Failed to add source {source_id}: {e}")
-        
+
         logger.info(f"✅ Loaded {len(self.sources)} sources from Config Manager")
-    
+
     # ========================================================================
     # Data Source Management
     # ========================================================================
-    
+
     def add_source(
-        self,
-        source_id: str,
-        source_type: str,
-        config: Dict[str, Any]
-    ) -> 'FederatedQueryEngine':
+        self, source_id: str, source_type: str, config: Dict[str, Any]
+    ) -> "FederatedQueryEngine":
         """
         Add a data source to the federated engine
-        
+
         Args:
             source_id: Unique identifier for this source
             source_type: Type of source (ibexdb, postgres, mysql, s3)
             config: Source-specific configuration
-            
+
         Returns:
             Self for method chaining
-            
+
         Supported Types:
             - ibexdb: IbexDB (Iceberg) tables
             - postgres: PostgreSQL database
             - mysql: MySQL database
             - s3: S3 Parquet files
-            
+
         Example:
             ```python
             fed.add_source("prod_db", "ibexdb", {
@@ -199,116 +195,115 @@ class FederatedQueryEngine:
         """
         source_config = DataSourceConfig(source_id, source_type, config)
         self.sources[source_id] = source_config
-        
+
         # Connect based on type
-        if source_type == 'ibexdb':
+        if source_type == "ibexdb":
             self._connect_ibexdb(source_config)
-        elif source_type == 'postgres':
+        elif source_type == "postgres":
             self._connect_postgres(source_config)
-        elif source_type == 'mysql':
+        elif source_type == "mysql":
             self._connect_mysql(source_config)
-        elif source_type == 's3':
+        elif source_type == "s3":
             self._configure_s3(source_config)
         else:
             logger.warning(f"⚠️  Unknown source type: {source_type}")
-        
+
         logger.info(f"✅ Added source: {source_id} ({source_type})")
         return self
-    
+
     def _connect_ibexdb(self, source_config: DataSourceConfig):
         """Connect to IbexDB source"""
         config = source_config.config
-        
+
         # Initialize IbexDB client
         client = IbexDB(
-            tenant_id=config.get('tenant_id', 'default'),
-            namespace=config.get('namespace', 'default')
+            tenant_id=config.get("tenant_id", "default"),
+            namespace=config.get("namespace", "default"),
         )
-        
+
         source_config.connection = client
-        
-        # Note: IbexDB queries are handled through client API, 
+
+        # Note: IbexDB queries are handled through client API,
         # not direct DuckDB attachment
-    
+
     def _connect_postgres(self, source_config: DataSourceConfig):
         """Connect to PostgreSQL source"""
         config = source_config.config
-        
-        schema_name = source_config.source_id.replace('-', '_')
-        
+
+        schema_name = source_config.source_id.replace("-", "_")
+
         attach_sql = f"""
-        ATTACH 'host={config["host"]} port={config.get("port", 5432)} 
-                dbname={config["database"]} user={config["user"]} 
-                password={config["password"]}' 
+        ATTACH 'host={config["host"]} port={config.get("port", 5432)}
+                dbname={config["database"]} user={config["user"]}
+                password={config["password"]}'
         AS {schema_name} (TYPE POSTGRES);
         """
-        
+
         try:
             self.conn.execute(attach_sql)
             logger.info(f"✅ Connected PostgreSQL: {source_config.source_id}")
         except Exception as e:
             logger.error(f"❌ Failed to connect PostgreSQL: {e}")
             raise
-    
+
     def _connect_mysql(self, source_config: DataSourceConfig):
         """Connect to MySQL source"""
         config = source_config.config
-        
-        schema_name = source_config.source_id.replace('-', '_')
-        
+
+        schema_name = source_config.source_id.replace("-", "_")
+
         attach_sql = f"""
-        ATTACH 'host={config["host"]} port={config.get("port", 3306)} 
-                database={config["database"]} user={config["user"]} 
-                password={config["password"]}' 
+        ATTACH 'host={config["host"]} port={config.get("port", 3306)}
+                database={config["database"]} user={config["user"]}
+                password={config["password"]}'
         AS {schema_name} (TYPE MYSQL);
         """
-        
+
         try:
             self.conn.execute(attach_sql)
             logger.info(f"✅ Connected MySQL: {source_config.source_id}")
         except Exception as e:
             logger.error(f"❌ Failed to connect MySQL: {e}")
             raise
-    
+
     def _configure_s3(self, source_config: DataSourceConfig):
         """Configure S3 access"""
         config = source_config.config
-        
+
         try:
             self.conn.execute(f"SET s3_endpoint='{config['endpoint']}';")
             self.conn.execute(f"SET s3_access_key_id='{config['access_key']}';")
             self.conn.execute(f"SET s3_secret_access_key='{config['secret_key']}';")
             self.conn.execute("SET s3_url_style='path';")
-            self.conn.execute(f"SET s3_use_ssl={'true' if config.get('use_ssl', False) else 'false'};")
+            self.conn.execute(
+                f"SET s3_use_ssl={'true' if config.get('use_ssl', False) else 'false'};"
+            )
             logger.info(f"✅ Configured S3: {source_config.source_id}")
         except Exception as e:
             logger.error(f"❌ Failed to configure S3: {e}")
             raise
-    
+
     # ========================================================================
     # QueryRequest/QueryResponse API (Type-Safe)
     # ========================================================================
-    
-    def execute_query_request(
-        self,
-        request: QueryRequest
-    ) -> QueryResponse:
+
+    def execute_query_request(self, request: QueryRequest) -> QueryResponse:
         """
         Execute a QueryRequest (type-safe structured query)
-        
+
         This uses the same QueryRequest/QueryResponse models as ibex-db-lambda
         for consistency across the platform.
-        
+
         Args:
             request: QueryRequest with filters, aggregations, etc.
-            
+
         Returns:
             QueryResponse with standardized structure
-            
+
         Example:
             ```python
             from ibexdb.models import QueryRequest, Filter
-            
+
             request = QueryRequest(
                 operation="QUERY",
                 tenant_id="company",
@@ -319,26 +314,27 @@ class FederatedQueryEngine:
                 ],
                 limit=100
             )
-            
+
             response = fed.execute_query_request(request)
-            
+
             if response.success:
                 for record in response.data.records:
                     print(record)
             ```
         """
         import time
+
         start_time = time.time()
         request_id = f"fed_{int(start_time * 1000)}"
-        
+
         try:
             # Check if we have an IbexDB source for this request
             source_id = f"{request.tenant_id}_{request.namespace}"
-            
+
             # If source exists, use it; otherwise try to query directly
             if source_id in self.sources:
                 source_config = self.sources[source_id]
-                if source_config.source_type == 'ibexdb' and source_config.connection:
+                if source_config.source_type == "ibexdb" and source_config.connection:
                     client: IbexDB = source_config.connection
                     return client.query(
                         table=request.table,
@@ -350,15 +346,15 @@ class FederatedQueryEngine:
                         limit=request.limit,
                         offset=request.offset,
                         distinct=request.distinct,
-                        as_of=request.as_of
+                        as_of=request.as_of,
                     )
-            
+
             # Otherwise build and execute SQL
             sql = self._build_sql_from_request(request)
             df = self.execute_sql(sql)
-            
+
             execution_time_ms = (time.time() - start_time) * 1000
-            
+
             return QueryResponse(
                 success=True,
                 data=QueryResponseData(
@@ -367,30 +363,25 @@ class FederatedQueryEngine:
                         row_count=len(df),
                         execution_time_ms=execution_time_ms,
                         scanned_rows=len(df),
-                        cache_hit=False
-                    )
+                        cache_hit=False,
+                    ),
                 ),
                 metadata=ResponseMetadata(
-                    request_id=request_id,
-                    execution_time_ms=execution_time_ms
-                )
+                    request_id=request_id, execution_time_ms=execution_time_ms
+                ),
             )
-            
+
         except Exception as e:
             execution_time_ms = (time.time() - start_time) * 1000
-            
+
             return QueryResponse(
                 success=False,
                 metadata=ResponseMetadata(
-                    request_id=request_id,
-                    execution_time_ms=execution_time_ms
+                    request_id=request_id, execution_time_ms=execution_time_ms
                 ),
-                error=ErrorDetail(
-                    code="QUERY_ERROR",
-                    message=str(e)
-                )
+                error=ErrorDetail(code="QUERY_ERROR", message=str(e)),
             )
-    
+
     def _build_sql_from_request(self, request: QueryRequest) -> str:
         """Build SQL from QueryRequest"""
         # SELECT clause
@@ -400,24 +391,24 @@ class FederatedQueryEngine:
                 field = agg.field
                 func = agg.function.upper()
                 alias = agg.alias
-                
+
                 if field:
                     expr = f"{func}({field})"
                 else:
                     expr = f"{func}(*)"
-                
+
                 expr = f"{expr} AS {alias}"
                 agg_exprs.append(expr)
-            
+
             select_clause = ", ".join(agg_exprs)
         elif request.projection:
             select_clause = ", ".join(request.projection)
         else:
             select_clause = "*"
-        
+
         # FROM clause
         from_clause = request.table
-        
+
         # WHERE clause
         where_clauses = []
         if request.filters:
@@ -425,20 +416,20 @@ class FederatedQueryEngine:
                 field = f.field
                 operator = f.operator
                 value = f.value
-                
+
                 # Convert operator to SQL
                 op_map = {
-                    'eq': '=',
-                    'ne': '!=',
-                    'gt': '>',
-                    'gte': '>=',
-                    'lt': '<',
-                    'lte': '<=',
-                    'like': 'LIKE',
-                    'in': 'IN'
+                    "eq": "=",
+                    "ne": "!=",
+                    "gt": ">",
+                    "gte": ">=",
+                    "lt": "<",
+                    "lte": "<=",
+                    "like": "LIKE",
+                    "in": "IN",
                 }
-                sql_op = op_map.get(operator, '=')
-                
+                sql_op = op_map.get(operator, "=")
+
                 # Format value
                 if isinstance(value, str):
                     value_str = f"'{value}'"
@@ -446,36 +437,36 @@ class FederatedQueryEngine:
                     value_str = f"({', '.join(repr(v) for v in value)})"
                 else:
                     value_str = str(value)
-                
+
                 where_clauses.append(f"{field} {sql_op} {value_str}")
-        
+
         # Build SQL
         sql_parts = [f"SELECT {select_clause}", f"FROM {from_clause}"]
-        
+
         if where_clauses:
             sql_parts.append(f"WHERE {' AND '.join(where_clauses)}")
-        
+
         if request.group_by:
             sql_parts.append(f"GROUP BY {', '.join(request.group_by)}")
-        
+
         if request.sort:
             sort_exprs = []
             for s in request.sort:
                 sort_exprs.append(f"{s.field} {s.order.upper()}")
             sql_parts.append(f"ORDER BY {', '.join(sort_exprs)}")
-        
+
         if request.limit:
             sql_parts.append(f"LIMIT {request.limit}")
-        
+
         if request.offset:
             sql_parts.append(f"OFFSET {request.offset}")
-        
+
         return "\n".join(sql_parts)
-    
+
     # ========================================================================
     # Structured Query API (No SQL Required)
     # ========================================================================
-    
+
     def query(
         self,
         sources: Dict[str, Dict[str, str]],
@@ -485,11 +476,11 @@ class FederatedQueryEngine:
         aggregations: Optional[List[Dict[str, Any]]] = None,
         group_by: Optional[List[str]] = None,
         sort: Optional[List[Dict[str, Any]]] = None,
-        limit: Optional[int] = None
+        limit: Optional[int] = None,
     ) -> pl.DataFrame:
         """
         Execute a structured federated query (no SQL knowledge needed!)
-        
+
         Args:
             sources: Source definitions
                 {"alias": {"source": "source_id", "table": "table_name"}}
@@ -500,10 +491,10 @@ class FederatedQueryEngine:
             group_by: Group by fields
             sort: Sort order
             limit: Row limit
-            
+
         Returns:
             Polars DataFrame with results
-            
+
         Example:
             ```python
             result = fed.query(
@@ -536,14 +527,14 @@ class FederatedQueryEngine:
             aggregations=aggregations,
             group_by=group_by,
             sort=sort,
-            limit=limit
+            limit=limit,
         )
-        
+
         logger.info(f"🔍 Generated SQL:\n{sql}")
-        
+
         # Execute
         return self.execute_sql(sql)
-    
+
     def _build_federated_sql(
         self,
         sources: Dict[str, Dict[str, str]],
@@ -553,168 +544,161 @@ class FederatedQueryEngine:
         aggregations: Optional[List[Dict[str, Any]]],
         group_by: Optional[List[str]],
         sort: Optional[List[Dict[str, Any]]],
-        limit: Optional[int]
+        limit: Optional[int],
     ) -> str:
         """Build SQL query from structured parameters"""
-        
+
         # SELECT clause
         if projection:
             select_clause = ", ".join(projection)
         elif aggregations:
             agg_exprs = []
             for agg in aggregations:
-                field = agg.get('field')
-                func = agg.get('function').upper()
-                alias = agg.get('alias')
-                
+                field = agg.get("field")
+                func = agg.get("function").upper()
+                alias = agg.get("alias")
+
                 if field:
                     expr = f"{func}({field})"
                 else:
                     expr = f"{func}(*)"
-                
+
                 if alias:
                     expr = f"{expr} AS {alias}"
-                
+
                 agg_exprs.append(expr)
-            
+
             select_clause = ", ".join(agg_exprs)
         else:
             select_clause = "*"
-        
+
         # FROM clause
         main_alias = list(sources.keys())[0]
         main_source = sources[main_alias]
         from_clause = f"{self._get_table_ref(main_source)} AS {main_alias}"
-        
+
         # JOIN clauses
         join_clauses = []
         if join and len(sources) > 1:
             for alias, source_def in list(sources.items())[1:]:
-                join_type = join.get('type', 'inner').upper()
+                join_type = join.get("type", "inner").upper()
                 table_ref = self._get_table_ref(source_def)
-                
+
                 # Build ON condition
                 on_conditions = []
-                on_dict = join.get('on', {})
+                on_dict = join.get("on", {})
                 for left_col, right_col in on_dict.items():
                     on_conditions.append(f"{left_col} = {right_col}")
-                
+
                 on_clause = " AND ".join(on_conditions) if on_conditions else "1=1"
-                
-                join_clauses.append(
-                    f"{join_type} JOIN {table_ref} AS {alias} ON {on_clause}"
-                )
-        
+
+                join_clauses.append(f"{join_type} JOIN {table_ref} AS {alias} ON {on_clause}")
+
         # WHERE clause
         where_clauses = []
         if filters:
             for f in filters:
-                source_alias = f.get('source')
-                field = f.get('field')
-                operator = f.get('operator')
-                value = f.get('value')
-                
+                source_alias = f.get("source")
+                field = f.get("field")
+                operator = f.get("operator")
+                value = f.get("value")
+
                 # Convert operator to SQL
                 op_map = {
-                    'eq': '=',
-                    'ne': '!=',
-                    'gt': '>',
-                    'gte': '>=',
-                    'lt': '<',
-                    'lte': '<=',
-                    'like': 'LIKE'
+                    "eq": "=",
+                    "ne": "!=",
+                    "gt": ">",
+                    "gte": ">=",
+                    "lt": "<",
+                    "lte": "<=",
+                    "like": "LIKE",
                 }
-                sql_op = op_map.get(operator, '=')
-                
+                sql_op = op_map.get(operator, "=")
+
                 # Format value
                 if isinstance(value, str):
                     value_str = f"'{value}'"
                 else:
                     value_str = str(value)
-                
-                where_clauses.append(
-                    f"{source_alias}.{field} {sql_op} {value_str}"
-                )
-        
+
+                where_clauses.append(f"{source_alias}.{field} {sql_op} {value_str}")
+
         # GROUP BY clause
         group_by_clause = ""
         if group_by:
             group_by_clause = f"GROUP BY {', '.join(group_by)}"
-        
+
         # ORDER BY clause
         order_by_clause = ""
         if sort:
             sort_exprs = []
             for s in sort:
-                field = s.get('field')
-                order = s.get('order', 'asc').upper()
+                field = s.get("field")
+                order = s.get("order", "asc").upper()
                 sort_exprs.append(f"{field} {order}")
             order_by_clause = f"ORDER BY {', '.join(sort_exprs)}"
-        
+
         # LIMIT clause
         limit_clause = f"LIMIT {limit}" if limit else ""
-        
+
         # Assemble SQL
-        sql_parts = [
-            f"SELECT {select_clause}",
-            f"FROM {from_clause}"
-        ]
-        
+        sql_parts = [f"SELECT {select_clause}", f"FROM {from_clause}"]
+
         if join_clauses:
             sql_parts.extend(join_clauses)
-        
+
         if where_clauses:
             sql_parts.append(f"WHERE {' AND '.join(where_clauses)}")
-        
+
         if group_by_clause:
             sql_parts.append(group_by_clause)
-        
+
         if order_by_clause:
             sql_parts.append(order_by_clause)
-        
+
         if limit_clause:
             sql_parts.append(limit_clause)
-        
+
         return "\n".join(sql_parts)
-    
+
     def _get_table_ref(self, source_def: Dict[str, str]) -> str:
         """Get table reference for SQL query"""
-        source_id = source_def['source']
-        table = source_def['table']
-        
+        source_id = source_def["source"]
+        table = source_def["table"]
+
         source_config = self.sources.get(source_id)
         if not source_config:
             raise ValueError(f"Source not found: {source_id}")
-        
-        if source_config.source_type == 'ibexdb':
+
+        if source_config.source_type == "ibexdb":
             # For IbexDB, we need to query through client and create temp table
             # Or use iceberg_scan if configured
             # For now, return schema.table format
-            schema_name = source_id.replace('-', '_')
+            schema_name = source_id.replace("-", "_")
             return f"{schema_name}.{table}"
         else:
             # For attached databases (postgres, mysql)
-            schema_name = source_id.replace('-', '_')
+            schema_name = source_id.replace("-", "_")
             return f"{schema_name}.{table}"
-    
+
     # ========================================================================
     # SQL Query API (For Advanced Users)
     # ========================================================================
-    
+
     def execute_sql(self, sql: str) -> pl.DataFrame:
         """
         Execute raw SQL query across federated sources
-        
+
         Args:
             sql: SQL query string
-            
+
         Returns:
             Polars DataFrame with results
-            
+
         Example:
             ```python
             result = fed.execute_sql(\"\"\"
-                SELECT 
+                SELECT
                     u.name,
                     COUNT(e.id) as event_count,
                     SUM(o.total) as revenue
@@ -737,62 +721,62 @@ class FederatedQueryEngine:
             logger.error(f"❌ Query failed: {e}")
             logger.error(f"SQL: {sql}")
             raise
-    
+
     def execute_query_dict(self, sql: str) -> List[Dict[str, Any]]:
         """
         Execute SQL and return results as list of dictionaries
-        
+
         Args:
             sql: SQL query string
-            
+
         Returns:
             List of dictionaries (one per row)
         """
         df = self.execute_sql(sql)
         return df.to_dicts()
-    
+
     # ========================================================================
     # Utility Methods
     # ========================================================================
-    
+
     def list_sources(self) -> List[Dict[str, str]]:
         """List all configured data sources"""
         return [
             {
-                'id': source_id,
-                'type': config.source_type,
-                'connected': config.connection is not None
+                "id": source_id,
+                "type": config.source_type,
+                "connected": config.connection is not None,
             }
             for source_id, config in self.sources.items()
         ]
-    
+
     def get_tables(self, source_id: str) -> List[str]:
         """List tables in a specific source"""
         source_config = self.sources.get(source_id)
         if not source_config:
             raise ValueError(f"Source not found: {source_id}")
-        
-        if source_config.source_type == 'ibexdb':
+
+        if source_config.source_type == "ibexdb":
             client: IbexDB = source_config.connection
             response = client.list_tables()
             return response.data.tables if response.success else []
-        
-        elif source_config.source_type in ['postgres', 'mysql']:
-            schema_name = source_id.replace('-', '_')
+
+        elif source_config.source_type in ["postgres", "mysql"]:
+            schema_name = source_id.replace("-", "_")
             result = self.conn.execute(f"SHOW TABLES FROM {schema_name}")
             return [row[0] for row in result.fetchall()]
-        
+
         else:
             return []
-    
+
     def close(self):
         """Close all connections"""
         self.conn.close()
         logger.info("✅ Federated Query Engine closed")
-    
+
     def __enter__(self):
         return self
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
 
@@ -801,24 +785,25 @@ class FederatedQueryEngine:
 # Convenience Functions
 # ============================================================================
 
+
 def create_federated_engine(
     sources: Optional[Dict[str, Dict[str, Any]]] = None,
     config_endpoint: Optional[str] = None,
     config_file: Optional[str] = None,
-    api_key: Optional[str] = None
+    api_key: Optional[str] = None,
 ) -> FederatedQueryEngine:
     """
     Create a federated query engine with sources
-    
+
     Args:
         sources: Dictionary of source configurations (manual)
         config_endpoint: Config Manager endpoint URL (automatic)
         config_file: Configuration file path (automatic)
         api_key: API key for Config Manager
-            
+
     Returns:
         FederatedQueryEngine instance
-        
+
     Examples:
         ```python
         # Method 1: Manual sources
@@ -828,13 +813,13 @@ def create_federated_engine(
                 "config": {"tenant_id": "company", "namespace": "prod"}
             }
         })
-        
+
         # Method 2: From Config Manager endpoint (like ajna-db-backend)
         fed = create_federated_engine(
             config_endpoint="http://config-manager:8080",
             api_key="my-api-key"
         )
-        
+
         # Method 3: From configuration file
         fed = create_federated_engine(
             config_file="config/datasources.json"
@@ -843,26 +828,18 @@ def create_federated_engine(
     """
     # Initialize config manager if endpoint or file provided
     config_manager = None
-    
+
     if config_endpoint:
-        config_manager = DataSourceConfigManager.from_endpoint(
-            url=config_endpoint,
-            api_key=api_key
-        )
+        config_manager = DataSourceConfigManager.from_endpoint(url=config_endpoint, api_key=api_key)
     elif config_file:
         config_manager = DataSourceConfigManager.from_file(config_file)
-    
+
     # Create engine with config manager
     engine = FederatedQueryEngine(config_manager=config_manager)
-    
+
     # Add manual sources if provided
     if sources:
         for source_id, source_def in sources.items():
-            engine.add_source(
-                source_id,
-                source_def['type'],
-                source_def['config']
-            )
-    
-    return engine
+            engine.add_source(source_id, source_def["type"], source_def["config"])
 
+    return engine

@@ -22,7 +22,7 @@ class Config:
                         If not provided, reads from ENVIRONMENT env var
         """
         # Get environment from parameter or environment variable
-        self.environment = environment or os.environ.get('ENVIRONMENT')
+        self.environment = environment or os.environ.get("ENVIRONMENT")
 
         if not self.environment:
             raise ValueError(
@@ -30,16 +30,16 @@ class Config:
             )
 
         # Load config.json from config/ directory
-        env_config_path = os.environ.get('IBEX_CONFIG_PATH')
+        env_config_path = os.environ.get("IBEX_CONFIG_PATH")
         if env_config_path:
             config_path = Path(env_config_path)
         else:
-            config_path = Path(__file__).parent.parent / 'config' / 'config.json'
-            
+            config_path = Path(__file__).parent.parent / "config" / "config.json"
+
         if not config_path.exists():
             raise FileNotFoundError(f"Configuration file not found: {config_path}")
 
-        with open(config_path, 'r') as f:
+        with open(config_path, "r") as f:
             all_config = json.load(f)
 
         if self.environment not in all_config:
@@ -72,7 +72,7 @@ class Config:
             return [self._substitute_env_vars(item) for item in obj]
         elif isinstance(obj, str):
             # Find all ${VAR_NAME} patterns
-            pattern = r'\$\{([A-Z_]+)\}'
+            pattern = r"\$\{([A-Z_]+)\}"
             matches = re.findall(pattern, obj)
 
             result = obj
@@ -83,7 +83,7 @@ class Config:
                         f"Environment variable '{var_name}' not set. "
                         f"Required by config for environment: {self.environment}"
                     )
-                result = result.replace(f'${{{var_name}}}', env_value)
+                result = result.replace(f"${{{var_name}}}", env_value)
 
             return result
         else:
@@ -120,27 +120,27 @@ class Config:
     @property
     def s3(self) -> Dict[str, Any]:
         """Get S3 configuration"""
-        return self.get('s3')
+        return self.get("s3")
 
     @property
     def catalog(self) -> Dict[str, Any]:
         """Get catalog configuration"""
-        return self.get('catalog')
+        return self.get("catalog")
 
     @property
     def duckdb(self) -> Dict[str, Any]:
         """Get DuckDB configuration"""
-        return self.get('duckdb')
+        return self.get("duckdb")
 
     @property
     def lambda_config(self) -> Dict[str, Any]:
         """Get Lambda configuration"""
-        return self.get('lambda')
+        return self.get("lambda")
 
     @property
     def performance(self) -> Dict[str, Any]:
         """Get performance configuration"""
-        return self.get('performance')
+        return self.get("performance")
 
 
 # Global config instance - initialized on first import
@@ -217,21 +217,21 @@ def _init_module_constants():
     global BUCKET_NAME, AWS_REGION, WAREHOUSE_PATH, MAX_RETRIES, QUERY_TIMEOUT_MS
 
     config = get_config()
-    BUCKET_NAME = config.get('s3', 'bucket_name')
-    AWS_REGION = config.get('s3', 'region')
+    BUCKET_NAME = config.get("s3", "bucket_name")
+    AWS_REGION = config.get("s3", "region")
 
-    bucket = config.get('s3', 'bucket_name')
-    warehouse = config.get('s3', 'warehouse_path')
+    bucket = config.get("s3", "bucket_name")
+    warehouse = config.get("s3", "warehouse_path")
     WAREHOUSE_PATH = f"s3://{bucket}/{warehouse}/"
 
-    MAX_RETRIES = config.get('performance', 'max_retries')
-    QUERY_TIMEOUT_MS = config.get('performance', 'query_timeout_ms')
+    MAX_RETRIES = config.get("performance", "max_retries")
+    QUERY_TIMEOUT_MS = config.get("performance", "query_timeout_ms")
 
 
 # Initialize constants when module is imported
 try:
     _init_module_constants()
-except Exception as e:
+except Exception:
     # If config isn't ready yet, constants will be None
     # They'll be initialized when get_config() is first called
     pass
