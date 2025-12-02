@@ -1,14 +1,14 @@
 [project]
-name = "ibexdb"
+name = "ibex-query-engine"
 version = "0.1.0"
-description = "Python client library for IbexDB - Serverless ACID database on S3 with Apache Iceberg"
+description = "Ibex Query Engine - Federated query engine with Apache Iceberg, DuckDB, and multi-source support"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
     {name = "Ajna Team", email = "team@ajnacloud.com"}
 ]
-keywords = ["database", "iceberg", "s3", "acid", "serverless", "analytics"]
+keywords = ["database", "iceberg", "s3", "acid", "serverless", "analytics", "federated", "query-engine", "duckdb"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -37,6 +37,7 @@ dependencies = [
 dev = [
     "pytest>=8.2.0",
     "pytest-asyncio>=0.23.6",
+    "pytest-cov>=5.0.0",
     "python-dotenv>=1.0.1",
     "black>=24.4.2",
     "ruff>=0.4.8",
@@ -52,14 +53,14 @@ fastapi = [
     "uvicorn[standard]>=0.30.0",
 ]
 all = [
-    "ibexdb[dev,lambda,fastapi]",
+    "ibex-query-engine[dev,lambda,fastapi]",
 ]
 
 [project.urls]
-Homepage = "https://github.com/ajnacloud/ibexdb"
-Documentation = "https://docs.ibexdb.io"
-Repository = "https://github.com/ajnacloud/ibexdb"
-Issues = "https://github.com/ajnacloud/ibexdb/issues"
+Homepage = "https://github.com/your-org/ibex-query-engine-lib"
+Documentation = "https://github.com/your-org/ibex-query-engine-lib#readme"
+Repository = "https://github.com/your-org/ibex-query-engine-lib"
+Issues = "https://github.com/your-org/ibex-query-engine-lib/issues"
 
 [build-system]
 requires = ["hatchling"]

@@ -9,6 +9,10 @@ __version__ = "0.1.0"
 __author__ = "Ajna Team"
 __license__ = "MIT"
 
+# Setup logging on import
+from ibexdb.logger import setup_logging
+setup_logging()
+
 # Core client
 from ibexdb.client import IbexDB
 

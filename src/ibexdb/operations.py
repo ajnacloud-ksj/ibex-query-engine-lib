@@ -11,6 +11,7 @@ import json
 import os
 import hashlib
 import time
+import logging
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List, Union
 
@@ -19,6 +20,8 @@ import polars as pl
 import pyarrow as pa
 from pyiceberg.catalog import Catalog
 from pyiceberg.catalog.rest import RestCatalog
+
+logger = logging.getLogger(__name__)
 from pyiceberg.schema import Schema
 from pyiceberg.types import (
     NestedField, StringType, IntegerType, LongType,
@@ -55,24 +58,24 @@ class FullIcebergOperations:
             RuntimeError: If initialization fails
         """
         try:
-            print("Loading configuration...")
+            logger.info("Loading configuration...")
             self.config = get_config()
-            print("✓ Configuration loaded")
+            logger.info("Configuration loaded")
             
-            print("Initializing PyIceberg catalog...")
+            logger.info("Initializing PyIceberg catalog...")
             self.catalog = self._init_pyiceberg_catalog()
             
-            print("Initializing DuckDB...")
+            logger.info("Initializing DuckDB...")
             self.conn = self._init_duckdb()
             
             # Initialize metadata cache for query performance
             self._metadata_cache = {}
             self._cache_ttl = 300  # 5 minutes cache
-            print("✓ Query cache initialized (TTL: 300s)")
+            logger.info(f"Query cache initialized (TTL: {self._cache_ttl}s)")
             
         except Exception as e:
             error_msg = f"FullIcebergOperations initialization failed: {e}"
-            print(f"✗ {error_msg}")
+            logger.error(error_msg)
             raise RuntimeError(error_msg) from e
 
     def _init_pyiceberg_catalog(self) -> Catalog:

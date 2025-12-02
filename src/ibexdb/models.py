@@ -207,7 +207,6 @@ class QueryRequest(BaseModel):
     offset: Optional[int] = Field(None, ge=0, description="Number of rows to skip")
 
     # Advanced options
-    tenant_id: Optional[str] = Field(None, description="Multi-tenant identifier")
     consistency: Optional[Consistency] = Field(Consistency.STRONG, description="Read consistency")
     timeout_ms: Optional[int] = Field(30000, gt=0, description="Query timeout in milliseconds")
     explain: Optional[bool] = Field(False, description="Return query plan instead of results")
@@ -262,7 +261,6 @@ class AggregateRequest(BaseModel):
     offset: Optional[int] = Field(None, ge=0, description="Number of groups to skip")
 
     # Options
-    tenant_id: Optional[str] = Field(None, description="Multi-tenant identifier")
     timeout_ms: Optional[int] = Field(60000, gt=0, description="Query timeout in milliseconds")
 
     class Config:

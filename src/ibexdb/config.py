@@ -30,7 +30,12 @@ class Config:
             )
 
         # Load config.json from config/ directory
-        config_path = Path(__file__).parent.parent / 'config' / 'config.json'
+        env_config_path = os.environ.get('IBEX_CONFIG_PATH')
+        if env_config_path:
+            config_path = Path(env_config_path)
+        else:
+            config_path = Path(__file__).parent.parent / 'config' / 'config.json'
+            
         if not config_path.exists():
             raise FileNotFoundError(f"Configuration file not found: {config_path}")
 

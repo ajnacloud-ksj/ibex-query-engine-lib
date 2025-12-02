@@ -29,6 +29,10 @@
       "query_timeout_ms": 30000,
       "batch_size": 1000
     },
+    "logging": {
+      "level": "INFO",
+      "format": "%(levelname)s - %(name)s - %(message)s"
+    },
     "iceberg": {
       "write": {
         "target_file_size_mb": 128,
