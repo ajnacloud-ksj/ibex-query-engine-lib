@@ -119,7 +119,7 @@ class FederatedQueryEngine:
         Args:
             duckdb_path: Path to DuckDB database (default: in-memory)
             config_manager: Config manager for automatic source loading
-            
+
         Note:
             For multi-tenant operations, tenant_id and namespace are passed
             per-request, not at initialization.
@@ -127,11 +127,11 @@ class FederatedQueryEngine:
         self.sources: Dict[str, DataSourceConfig] = {}
         self.conn = duckdb.connect(duckdb_path)
         self.config_manager = config_manager
-        
+
         # Initialize IbexDB operations engine (tenant_id will be per-request)
         from ibexdb.operations import FullIcebergOperations as DatabaseOperations
         self._db_ops = DatabaseOperations()
-        
+
         self._setup_duckdb()
 
         # Load sources from config manager if provided
@@ -213,7 +213,7 @@ class FederatedQueryEngine:
             # Just connection config - use as-is
             connection_config = config
             source_config = DataSourceConfig(source_id, source_type, {"config": config})
-        
+
         self.sources[source_id] = source_config
 
         # Connect based on type (use connection_config for actual connection)
@@ -230,7 +230,7 @@ class FederatedQueryEngine:
 
         logger.info(f"✅ Added source: {source_id} ({source_type})")
         return self
-    
+
     def _connect_postgres_with_config(self, source_config: DataSourceConfig, connection_config: Dict[str, Any]):
         """Connect to PostgreSQL source with explicit connection config"""
         schema_name = source_config.source_id.replace("-", "_")
@@ -248,7 +248,7 @@ class FederatedQueryEngine:
         except Exception as e:
             logger.error(f"❌ Failed to connect PostgreSQL: {e}")
             raise
-    
+
     def _connect_mysql_with_config(self, source_config: DataSourceConfig, connection_config: Dict[str, Any]):
         """Connect to MySQL source with explicit connection config"""
         schema_name = source_config.source_id.replace("-", "_")
@@ -266,7 +266,7 @@ class FederatedQueryEngine:
         except Exception as e:
             logger.error(f"❌ Failed to connect MySQL: {e}")
             raise
-    
+
     def _connect_ibexdb_with_config(self, source_config: DataSourceConfig, connection_config: Dict[str, Any]):
         """Connect to IbexDB source with explicit connection config"""
         # For IbexDB, we don't need to do anything special
@@ -827,38 +827,38 @@ class FederatedQueryEngine:
     def describe_table(self, request):
         """Delegate describe_table to DatabaseOperations (supports per-request tenant_id)"""
         return self._db_ops.describe_table(request)
-    
+
     def query_request(self, request: QueryRequest) -> QueryResponse:
         """
         Execute QueryRequest across all sources (Iceberg, Postgres, MySQL)
-        
+
         This is the unified query method that works for both Iceberg and external sources.
         It resolves logical database names and builds SQL from the QueryRequest.
-        
+
         Args:
             request: QueryRequest with table, filters, projections, etc.
-        
+
         Returns:
             QueryResponse with results
-        
+
         Examples:
             # Iceberg query
             query_request(QueryRequest(table="users", filters=[...]))
-            
+
             # Postgres query (logical name)
             query_request(QueryRequest(table="userdb.users", filters=[...]))
-            
+
             # MySQL query (logical name)
             query_request(QueryRequest(table="orderdb.orders", aggregations=[...]))
         """
         # 1. Resolve logical database name to DuckDB schema name
         resolved_table = self._resolve_table_name(request.table)
-        
+
         # 2. Check if this is an Iceberg table (no dot in resolved name)
         if "." not in resolved_table:
             # Iceberg table - delegate to DatabaseOperations
             return self._db_ops.query(request)
-        
+
         # 3. External source - build SQL and execute via DuckDB
         sql, params = self._build_sql_from_query_request(request, resolved_table)
 
@@ -866,9 +866,9 @@ class FederatedQueryEngine:
 
         try:
             result = self.conn.execute(sql, params)
-            records = [dict(zip([col[0] for col in result.description], row)) 
+            records = [dict(zip([col[0] for col in result.description], row))
                       for row in result.fetchall()]
-            
+
             return QueryResponse(
                 success=True,
                 data=QueryResponseData(
@@ -892,11 +892,11 @@ class FederatedQueryEngine:
                 ),
                 metadata=ResponseMetadata(request_id="federated-query", execution_time_ms=0.0)  # Add required fields
             )
-    
+
     def _resolve_table_name(self, table: str) -> str:
         """
         Resolve logical database name to DuckDB schema name
-        
+
         Examples:
             "users" → "users" (Iceberg, no change)
             "userdb.users" → "postgres.users" (resolved)
@@ -905,9 +905,9 @@ class FederatedQueryEngine:
         """
         if "." not in table:
             return table  # Iceberg table, no resolution needed
-        
+
         db_name, table_name = table.split(".", 1)
-        
+
         # Look up logical database name → DuckDB schema name
         for source in self.sources.values():
             logical_name = source.config.get("database")
@@ -915,11 +915,11 @@ class FederatedQueryEngine:
                 resolved = f"{source.source_id}.{table_name}"
                 logger.info(f"📍 Resolved: {table} → {resolved}")
                 return resolved
-        
+
         # Not found - assume it's already a DuckDB schema name (e.g., "postgres.users")
         logger.info(f"📍 Using as-is: {table}")
         return table
-    
+
     def _build_sql_from_query_request(self, request: QueryRequest, table: str) -> tuple:
         """
         Convert QueryRequest to parameterized SQL
