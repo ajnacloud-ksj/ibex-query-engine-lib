@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import time
+import uuid
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
@@ -418,7 +419,7 @@ class FullIcebergOperations:
                     return CreateTableResponse(
                         success=False,
                         data=None,
-                        metadata=ResponseMetadata(request_id="temp", execution_time_ms=0),
+                        metadata=ResponseMetadata(request_id=str(uuid.uuid4()), execution_time_ms=0),
                         error=ErrorDetail(code="TABLE_EXISTS", message="Table already exists"),
                     )
                 from .models import CreateTableResponseData, ResponseMetadata
@@ -426,7 +427,7 @@ class FullIcebergOperations:
                 return CreateTableResponse(
                     success=True,
                     data=CreateTableResponseData(table_created=False, table_existed=True),
-                    metadata=ResponseMetadata(request_id="temp", execution_time_ms=0),
+                    metadata=ResponseMetadata(request_id=str(uuid.uuid4()), execution_time_ms=0),
                     error=None,
                 )
             except Exception:
@@ -472,7 +473,7 @@ class FullIcebergOperations:
             return CreateTableResponse(
                 success=True,
                 data=CreateTableResponseData(table_created=True, table_existed=False),
-                metadata=ResponseMetadata(request_id="temp", execution_time_ms=0),
+                metadata=ResponseMetadata(request_id=str(uuid.uuid4()), execution_time_ms=0),
                 error=None,
             )
 
@@ -482,7 +483,7 @@ class FullIcebergOperations:
             return CreateTableResponse(
                 success=False,
                 data=None,
-                metadata=ResponseMetadata(request_id="temp", execution_time_ms=0),
+                metadata=ResponseMetadata(request_id=str(uuid.uuid4()), execution_time_ms=0),
                 error=ErrorDetail(code="CREATE_ERROR", message=str(e)),
             )
 
@@ -604,7 +605,7 @@ class FullIcebergOperations:
                     compaction_recommended=compaction_recommended,
                     small_files_count=small_files_count,
                 ),
-                metadata=ResponseMetadata(request_id="temp", execution_time_ms=0),
+                metadata=ResponseMetadata(request_id=str(uuid.uuid4()), execution_time_ms=0),
                 error=None,
             )
 
@@ -614,14 +615,12 @@ class FullIcebergOperations:
             return WriteResponse(
                 success=False,
                 data=None,
-                metadata=ResponseMetadata(request_id="temp", execution_time_ms=0),
+                metadata=ResponseMetadata(request_id=str(uuid.uuid4()), execution_time_ms=0),
                 error=ErrorDetail(code="WRITE_ERROR", message=str(e)),
             )
 
     def query(self, request: QueryRequest) -> QueryResponse:
         """Query Iceberg table using DuckDB's iceberg_scan with metadata caching"""
-        import uuid
-
         query_start = time.time()
         query_id = str(uuid.uuid4())
         cache_hit = False
@@ -653,7 +652,7 @@ class FullIcebergOperations:
                             row_count=0, execution_time_ms=0, cache_hit=False, query_id=query_id
                         ),
                     ),
-                    metadata=ResponseMetadata(request_id="temp", execution_time_ms=0),
+                    metadata=ResponseMetadata(request_id=str(uuid.uuid4()), execution_time_ms=0),
                     error=None,
                 )
 
@@ -705,13 +704,15 @@ class FullIcebergOperations:
             # Execute query and track timing
             query_exec_start = time.time()
             if params:
-                result = self.conn.execute(sql, params).fetchdf()
+                result = self.conn.execute(sql, params)
             else:
-                result = self.conn.execute(sql).fetchdf()
+                result = self.conn.execute(sql)
+            columns = [desc[0] for desc in result.description]
+            rows = result.fetchall()
             query_exec_time = (time.time() - query_exec_start) * 1000
 
             # Convert to dict
-            data = result.to_dict(orient="records") if not result.empty else []
+            data = [dict(zip(columns, row)) for row in rows]
 
             # Calculate total query time
             _total_time_ms = (time.time() - query_start) * 1000
@@ -744,7 +745,7 @@ class FullIcebergOperations:
                         warnings=None,
                     ),
                 ),
-                metadata=ResponseMetadata(request_id="temp", execution_time_ms=0),
+                metadata=ResponseMetadata(request_id=str(uuid.uuid4()), execution_time_ms=0),
                 error=None,
             )
 
@@ -754,7 +755,7 @@ class FullIcebergOperations:
             return QueryResponse(
                 success=False,
                 data=None,
-                metadata=ResponseMetadata(request_id="temp", execution_time_ms=0),
+                metadata=ResponseMetadata(request_id=str(uuid.uuid4()), execution_time_ms=0),
                 error=ErrorDetail(code="QUERY_ERROR", message=str(e)),
             )
 
@@ -788,16 +789,17 @@ class FullIcebergOperations:
 
             # Execute query
             if params:
-                result_df = self.conn.execute(sql, params).fetchdf()
+                result = self.conn.execute(sql, params)
             else:
-                result_df = self.conn.execute(sql).fetchdf()
+                result = self.conn.execute(sql)
+            columns = [desc[0] for desc in result.description]
+            rows = result.fetchall()
 
-            # Remove the 'rn' column added by ROW_NUMBER
-            if "rn" in result_df.columns:
-                result_df = result_df.drop("rn", axis=1)
-
-            # Convert to list of records
-            records = result_df.to_dict(orient="records") if not result_df.empty else []
+            # Convert to list of records, removing the 'rn' column added by ROW_NUMBER
+            records = [
+                {k: v for k, v in zip(columns, row) if k != "rn"}
+                for row in rows
+            ]
 
             # If no records found, return success with 0 updates
             if not records:
@@ -806,7 +808,7 @@ class FullIcebergOperations:
                 return UpdateResponse(
                     success=True,
                     data=UpdateResponseData(records_updated=0),
-                    metadata=ResponseMetadata(request_id="temp", execution_time_ms=0),
+                    metadata=ResponseMetadata(request_id=str(uuid.uuid4()), execution_time_ms=0),
                     error=None,
                 )
 
@@ -851,7 +853,7 @@ class FullIcebergOperations:
             return UpdateResponse(
                 success=True,
                 data=UpdateResponseData(records_updated=len(updated_records)),
-                metadata=ResponseMetadata(request_id="temp", execution_time_ms=0),
+                metadata=ResponseMetadata(request_id=str(uuid.uuid4()), execution_time_ms=0),
                 error=None,
             )
 
@@ -861,7 +863,7 @@ class FullIcebergOperations:
             return UpdateResponse(
                 success=False,
                 data=None,
-                metadata=ResponseMetadata(request_id="temp", execution_time_ms=0),
+                metadata=ResponseMetadata(request_id=str(uuid.uuid4()), execution_time_ms=0),
                 error=ErrorDetail(code="UPDATE_ERROR", message=str(e)),
             )
 
@@ -891,7 +893,7 @@ class FullIcebergOperations:
                     if update_result.success
                     else None
                 ),
-                metadata=ResponseMetadata(request_id="temp", execution_time_ms=0),
+                metadata=ResponseMetadata(request_id=str(uuid.uuid4()), execution_time_ms=0),
                 error=update_result.error,
             )
 
@@ -901,7 +903,7 @@ class FullIcebergOperations:
             return DeleteResponse(
                 success=False,
                 data=None,
-                metadata=ResponseMetadata(request_id="temp", execution_time_ms=0),
+                metadata=ResponseMetadata(request_id=str(uuid.uuid4()), execution_time_ms=0),
                 error=ErrorDetail(code="DELETE_ERROR", message=str(e)),
             )
 
@@ -918,7 +920,7 @@ class FullIcebergOperations:
                 return HardDeleteResponse(
                     success=False,
                     data=None,
-                    metadata=ResponseMetadata(request_id="temp", execution_time_ms=0),
+                    metadata=ResponseMetadata(request_id=str(uuid.uuid4()), execution_time_ms=0),
                     error=ErrorDetail(
                         code="CONFIRMATION_REQUIRED", message="Hard delete requires confirm=true"
                     ),
@@ -957,7 +959,7 @@ class FullIcebergOperations:
                 return HardDeleteResponse(
                     success=True,
                     data=HardDeleteResponseData(records_deleted=0, files_rewritten=0),
-                    metadata=ResponseMetadata(request_id="temp", execution_time_ms=0),
+                    metadata=ResponseMetadata(request_id=str(uuid.uuid4()), execution_time_ms=0),
                     error=None,
                 )
 
@@ -992,7 +994,7 @@ class FullIcebergOperations:
                 data=HardDeleteResponseData(
                     records_deleted=records_to_delete, files_rewritten=files_before - files_after
                 ),
-                metadata=ResponseMetadata(request_id="temp", execution_time_ms=0),
+                metadata=ResponseMetadata(request_id=str(uuid.uuid4()), execution_time_ms=0),
                 error=None,
             )
 
@@ -1006,7 +1008,7 @@ class FullIcebergOperations:
             return HardDeleteResponse(
                 success=False,
                 data=None,
-                metadata=ResponseMetadata(request_id="temp", execution_time_ms=0),
+                metadata=ResponseMetadata(request_id=str(uuid.uuid4()), execution_time_ms=0),
                 error=ErrorDetail(code="HARD_DELETE_ERROR", message=str(e)),
             )
 
@@ -1147,7 +1149,7 @@ class FullIcebergOperations:
                     data=CompactResponseData(
                         compacted=False, reason="No files to compact", stats=None
                     ),
-                    metadata=ResponseMetadata(request_id="temp", execution_time_ms=0),
+                    metadata=ResponseMetadata(request_id=str(uuid.uuid4()), execution_time_ms=0),
                     error=None,
                 )
 
@@ -1173,7 +1175,7 @@ class FullIcebergOperations:
                         reason=f"Only {len(small_files)} small files (threshold: {min_files_to_compact})",
                         stats=None,
                     ),
-                    metadata=ResponseMetadata(request_id="temp", execution_time_ms=0),
+                    metadata=ResponseMetadata(request_id=str(uuid.uuid4()), execution_time_ms=0),
                     error=None,
                 )
 
@@ -1191,10 +1193,10 @@ class FullIcebergOperations:
                 WHERE _tenant_id = '{request.tenant_id}'
             """
 
-            # Read data using DuckDB
-            result_df = self.conn.execute(sql).fetchdf()
+            # Read data using DuckDB directly to Arrow (avoids pandas)
+            arrow_table = self.conn.execute(sql).fetch_arrow_table()
 
-            if result_df.empty:
+            if arrow_table.num_rows == 0:
                 from .models import CompactResponseData, ResponseMetadata
 
                 return CompactResponse(
@@ -1202,12 +1204,9 @@ class FullIcebergOperations:
                     data=CompactResponseData(
                         compacted=False, reason="No data to compact", stats=None
                     ),
-                    metadata=ResponseMetadata(request_id="temp", execution_time_ms=0),
+                    metadata=ResponseMetadata(request_id=str(uuid.uuid4()), execution_time_ms=0),
                     error=None,
                 )
-
-            # Convert to PyArrow table
-            arrow_table = pa.Table.from_pandas(result_df)
 
             # Get Iceberg schema
             iceberg_schema = table.schema().as_arrow()
@@ -1311,7 +1310,7 @@ class FullIcebergOperations:
             return CompactResponse(
                 success=True,
                 data=CompactResponseData(compacted=True, reason=None, stats=stats),
-                metadata=ResponseMetadata(request_id="temp", execution_time_ms=0),
+                metadata=ResponseMetadata(request_id=str(uuid.uuid4()), execution_time_ms=0),
                 error=None,
             )
 
@@ -1323,7 +1322,7 @@ class FullIcebergOperations:
             return CompactResponse(
                 success=False,
                 data=None,
-                metadata=ResponseMetadata(request_id="temp", execution_time_ms=0),
+                metadata=ResponseMetadata(request_id=str(uuid.uuid4()), execution_time_ms=0),
                 error=ErrorDetail(code="COMPACT_ERROR", message=str(e)),
             )
 
@@ -1343,7 +1342,7 @@ class FullIcebergOperations:
             return ListTablesResponse(
                 success=True,
                 data=ListTablesResponseData(tables=table_names),
-                metadata=ResponseMetadata(request_id="temp", execution_time_ms=0),
+                metadata=ResponseMetadata(request_id=str(uuid.uuid4()), execution_time_ms=0),
                 error=None,
             )
 
@@ -1353,7 +1352,7 @@ class FullIcebergOperations:
             return ListTablesResponse(
                 success=False,
                 data=None,
-                metadata=ResponseMetadata(request_id="temp", execution_time_ms=0),
+                metadata=ResponseMetadata(request_id=str(uuid.uuid4()), execution_time_ms=0),
                 error=ErrorDetail(code="LIST_ERROR", message=str(e)),
             )
 
@@ -1396,7 +1395,7 @@ class FullIcebergOperations:
             return DescribeTableResponse(
                 success=True,
                 data=DescribeTableResponseData(table=table_desc),
-                metadata=ResponseMetadata(request_id="temp", execution_time_ms=0),
+                metadata=ResponseMetadata(request_id=str(uuid.uuid4()), execution_time_ms=0),
                 error=None,
             )
 
@@ -1406,7 +1405,7 @@ class FullIcebergOperations:
             return DescribeTableResponse(
                 success=False,
                 data=None,
-                metadata=ResponseMetadata(request_id="temp", execution_time_ms=0),
+                metadata=ResponseMetadata(request_id=str(uuid.uuid4()), execution_time_ms=0),
                 error=ErrorDetail(code="DESCRIBE_ERROR", message=str(e)),
             )
 

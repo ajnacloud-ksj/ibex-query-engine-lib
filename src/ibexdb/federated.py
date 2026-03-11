@@ -273,61 +273,6 @@ class FederatedQueryEngine:
         # The connection is handled by the DatabaseOperations instance
         pass
 
-    def _connect_ibexdb(self, source_config: DataSourceConfig):
-        """Connect to IbexDB source"""
-        config = source_config.config
-
-        # Initialize IbexDB client
-        client = IbexDB(
-            tenant_id=config.get("tenant_id", "default"),
-            namespace=config.get("namespace", "default"),
-        )
-
-        source_config.connection = client
-
-        # Note: IbexDB queries are handled through client API,
-        # not direct DuckDB attachment
-
-    def _connect_postgres(self, source_config: DataSourceConfig):
-        """Connect to PostgreSQL source"""
-        config = source_config.config
-
-        schema_name = source_config.source_id.replace("-", "_")
-
-        attach_sql = f"""
-        ATTACH 'host={config["host"]} port={config.get("port", 5432)}
-                dbname={config["database"]} user={config["user"]}
-                password={config["password"]}'
-        AS {schema_name} (TYPE POSTGRES);
-        """
-
-        try:
-            self.conn.execute(attach_sql)
-            logger.info(f"✅ Connected PostgreSQL: {source_config.source_id}")
-        except Exception as e:
-            logger.error(f"❌ Failed to connect PostgreSQL: {e}")
-            raise
-
-    def _connect_mysql(self, source_config: DataSourceConfig):
-        """Connect to MySQL source"""
-        config = source_config.config
-
-        schema_name = source_config.source_id.replace("-", "_")
-
-        attach_sql = f"""
-        ATTACH 'host={config["host"]} port={config.get("port", 3306)}
-                database={config["database"]} user={config["user"]}
-                password={config["password"]}'
-        AS {schema_name} (TYPE MYSQL);
-        """
-
-        try:
-            self.conn.execute(attach_sql)
-            logger.info(f"✅ Connected MySQL: {source_config.source_id}")
-        except Exception as e:
-            logger.error(f"❌ Failed to connect MySQL: {e}")
-            raise
-
     def _configure_s3(self, source_config: DataSourceConfig):
         """Configure S3 access"""
         config = source_config.config
@@ -412,8 +357,8 @@ class FederatedQueryEngine:
                     )
 
             # Otherwise build and execute SQL
-            sql = self._build_sql_from_request(request)
-            df = self.execute_sql(sql)
+            sql, params = self._build_sql_from_request(request)
+            df = self.execute_sql(sql, params)
 
             execution_time_ms = (time.time() - start_time) * 1000
 
@@ -444,8 +389,14 @@ class FederatedQueryEngine:
                 error=ErrorDetail(code="QUERY_ERROR", message=str(e)),
             )
 
-    def _build_sql_from_request(self, request: QueryRequest) -> str:
-        """Build SQL from QueryRequest"""
+    def _build_sql_from_request(self, request: QueryRequest) -> tuple:
+        """Build SQL from QueryRequest with parameterized values
+
+        Returns:
+            Tuple of (sql_string, params_list)
+        """
+        params = []
+
         # SELECT clause
         if request.aggregations:
             agg_exprs = []
@@ -492,15 +443,13 @@ class FederatedQueryEngine:
                 }
                 sql_op = op_map.get(operator, "=")
 
-                # Format value
-                if isinstance(value, str):
-                    value_str = f"'{value}'"
-                elif isinstance(value, list):
-                    value_str = f"({', '.join(repr(v) for v in value)})"
+                if isinstance(value, list):
+                    placeholders = ", ".join("?" for _ in value)
+                    where_clauses.append(f"{field} {sql_op} ({placeholders})")
+                    params.extend(value)
                 else:
-                    value_str = str(value)
-
-                where_clauses.append(f"{field} {sql_op} {value_str}")
+                    where_clauses.append(f"{field} {sql_op} ?")
+                    params.append(value)
 
         # Build SQL
         sql_parts = [f"SELECT {select_clause}", f"FROM {from_clause}"]
@@ -523,7 +472,7 @@ class FederatedQueryEngine:
         if request.offset:
             sql_parts.append(f"OFFSET {request.offset}")
 
-        return "\n".join(sql_parts)
+        return "\n".join(sql_parts), params
 
     # ========================================================================
     # Structured Query API (No SQL Required)
@@ -581,7 +530,7 @@ class FederatedQueryEngine:
             ```
         """
         # Build SQL from structured query
-        sql = self._build_federated_sql(
+        sql, params = self._build_federated_sql(
             sources=sources,
             projection=projection,
             filters=filters,
@@ -595,7 +544,7 @@ class FederatedQueryEngine:
         logger.info(f"🔍 Generated SQL:\n{sql}")
 
         # Execute
-        return self.execute_sql(sql)
+        return self.execute_sql(sql, params)
 
     def _build_federated_sql(
         self,
@@ -607,8 +556,13 @@ class FederatedQueryEngine:
         group_by: Optional[List[str]],
         sort: Optional[List[Dict[str, Any]]],
         limit: Optional[int],
-    ) -> str:
-        """Build SQL query from structured parameters"""
+    ) -> tuple[str, list]:
+        """Build SQL query from structured parameters with parameterized values
+
+        Returns:
+            Tuple of (sql_string, params_list)
+        """
+        params: list = []
 
         # SELECT clause
         if projection:
@@ -617,7 +571,7 @@ class FederatedQueryEngine:
             agg_exprs = []
             for agg in aggregations:
                 field = agg.get("field")
-                func = agg.get("function").upper()
+                func = str(agg.get("function", "")).upper()
                 alias = agg.get("alias")
 
                 if field:
@@ -662,7 +616,7 @@ class FederatedQueryEngine:
             for f in filters:
                 source_alias = f.get("source")
                 field = f.get("field")
-                operator = f.get("operator")
+                operator = f.get("operator", "eq")
                 value = f.get("value")
 
                 # Convert operator to SQL
@@ -677,13 +631,8 @@ class FederatedQueryEngine:
                 }
                 sql_op = op_map.get(operator, "=")
 
-                # Format value
-                if isinstance(value, str):
-                    value_str = f"'{value}'"
-                else:
-                    value_str = str(value)
-
-                where_clauses.append(f"{source_alias}.{field} {sql_op} {value_str}")
+                where_clauses.append(f"{source_alias}.{field} {sql_op} ?")
+                params.append(value)
 
         # GROUP BY clause
         group_by_clause = ""
@@ -721,7 +670,7 @@ class FederatedQueryEngine:
         if limit_clause:
             sql_parts.append(limit_clause)
 
-        return "\n".join(sql_parts)
+        return "\n".join(sql_parts), params
 
     def _get_table_ref(self, source_def: Dict[str, str]) -> str:
         """Get table reference for SQL query"""
@@ -747,12 +696,13 @@ class FederatedQueryEngine:
     # SQL Query API (For Advanced Users)
     # ========================================================================
 
-    def execute_sql(self, sql: str) -> pl.DataFrame:
+    def execute_sql(self, sql: str, params: list = None) -> pl.DataFrame:
         """
         Execute raw SQL query across federated sources
 
         Args:
             sql: SQL query string
+            params: Optional list of parameter values for parameterized queries
 
         Returns:
             Polars DataFrame with results
@@ -775,7 +725,7 @@ class FederatedQueryEngine:
             ```
         """
         try:
-            result = self.conn.execute(sql)
+            result = self.conn.execute(sql, params or [])
             df = result.pl()
             logger.info(f"✅ Query executed: {len(df)} rows returned")
             return df
@@ -910,12 +860,12 @@ class FederatedQueryEngine:
             return self._db_ops.query(request)
         
         # 3. External source - build SQL and execute via DuckDB
-        sql = self._build_sql_from_query_request(request, resolved_table)
-        
+        sql, params = self._build_sql_from_query_request(request, resolved_table)
+
         logger.info(f"🔍 Executing federated query: {sql}")
-        
+
         try:
-            result = self.conn.execute(sql)
+            result = self.conn.execute(sql, params)
             records = [dict(zip([col[0] for col in result.description], row)) 
                       for row in result.fetchall()]
             
@@ -970,17 +920,19 @@ class FederatedQueryEngine:
         logger.info(f"📍 Using as-is: {table}")
         return table
     
-    def _build_sql_from_query_request(self, request: QueryRequest, table: str) -> str:
+    def _build_sql_from_query_request(self, request: QueryRequest, table: str) -> tuple:
         """
-        Convert QueryRequest to SQL
-        
+        Convert QueryRequest to parameterized SQL
+
         Args:
             request: QueryRequest object
             table: Resolved table name (e.g., "postgres.users")
-        
+
         Returns:
-            SQL query string
+            Tuple of (sql_string, params_list)
         """
+        params = []
+
         # SELECT clause
         if request.aggregations:
             fields = []
@@ -991,48 +943,40 @@ class FederatedQueryEngine:
                 fields.append(f"{func}({field}) as {alias}")
         else:
             fields = request.projection if request.projection else ["*"]
-        
+
         sql = f"SELECT {', '.join(fields)} FROM {table}"
-        
+
         # Table alias
         if request.alias:
             sql += f" AS {request.alias}"
-        
+
         # JOIN clauses (for federated cross-database joins)
         if request.join:
             for join_clause in request.join:
                 # Resolve the join table name (might be logical name like "orderdb.orders")
                 join_table = self._resolve_table_name(join_clause.table)
-                
+
                 # Join type
                 join_type = join_clause.type.value.upper() if hasattr(join_clause.type, 'value') else join_clause.type.upper()
                 sql += f" {join_type} JOIN {join_table}"
-                
+
                 # Join table alias
                 if join_clause.alias:
                     sql += f" AS {join_clause.alias}"
-                
+
                 # ON conditions
                 if join_clause.on:
                     on_conditions = []
                     for condition in join_clause.on:
                         op_map = {"eq": "=", "ne": "!=", "gt": ">", "gte": ">=", "lt": "<", "lte": "<="}
-                        operator = op_map.get(condition.operator, "=")
+                        operator = op_map.get(condition.operator or "eq", "=")
                         on_conditions.append(f"{condition.left_field} {operator} {condition.right_field}")
                     sql += f" ON {' AND '.join(on_conditions)}"
-        
+
         # WHERE clause
         if request.filters:
             conditions = []
             for f in request.filters:
-                # Handle string vs numeric values
-                if isinstance(f.value, str):
-                    value = f"'{f.value}'"
-                elif isinstance(f.value, list):
-                    value = f"({', '.join([repr(v) for v in f.value])})"
-                else:
-                    value = str(f.value)
-                
                 # Map operators
                 op_map = {
                     "eq": "=",
@@ -1045,46 +989,52 @@ class FederatedQueryEngine:
                     "like": "LIKE"
                 }
                 operator = op_map.get(f.operator, f.operator)
-                conditions.append(f"{f.field} {operator} {value}")
-            
+
+                if isinstance(f.value, list):
+                    placeholders = ", ".join("?" for _ in f.value)
+                    conditions.append(f"{f.field} {operator} ({placeholders})")
+                    params.extend(f.value)
+                else:
+                    conditions.append(f"{f.field} {operator} ?")
+                    params.append(f.value)
+
             sql += f" WHERE {' AND '.join(conditions)}"
-        
+
         # GROUP BY clause
         if request.group_by:
             sql += f" GROUP BY {', '.join(request.group_by)}"
-        
+
         # HAVING clause
         if request.having:
             having_conditions = []
             for h in request.having:
-                value = f"'{h.value}'" if isinstance(h.value, str) else str(h.value)
                 op_map = {"eq": "=", "ne": "!=", "gt": ">", "gte": ">=", "lt": "<", "lte": "<="}
                 operator = op_map.get(h.operator, h.operator)
-                having_conditions.append(f"{h.field} {operator} {value}")
+                having_conditions.append(f"{h.field} {operator} ?")
+                params.append(h.value)
             sql += f" HAVING {' AND '.join(having_conditions)}"
-        
+
         # ORDER BY clause
         if request.sort:
             order_by = [f"{s.field} {s.order.upper() if hasattr(s.order, 'upper') else s.order.value.upper()}" for s in request.sort]
             sql += f" ORDER BY {', '.join(order_by)}"
-        
+
         # DISTINCT
         if request.distinct:
             sql = sql.replace("SELECT ", "SELECT DISTINCT ", 1)
-        
+
         # LIMIT and OFFSET
         if request.limit:
             sql += f" LIMIT {request.limit}"
         if request.offset:
             sql += f" OFFSET {request.offset}"
-        
-        return sql
+
+        return sql, params
 
 
-    def query(self, request):
-        """Delegate query to DatabaseOperations (supports per-request tenant_id)"""
+    def query_iceberg(self, request):
+        """Delegate query to DatabaseOperations for Iceberg tables (supports per-request tenant_id)"""
         return self._db_ops.query(request)
-
 
 
 

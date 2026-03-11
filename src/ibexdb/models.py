@@ -38,6 +38,12 @@ class OperationType(str, Enum):
     INSERT = "INSERT"
     UPSERT = "UPSERT"
     COMPACT = "COMPACT"
+    DROP_TABLE = "DROP_TABLE"
+    DROP_NAMESPACE = "DROP_NAMESPACE"
+    GET_UPLOAD_URL = "GET_UPLOAD_URL"
+    GET_DOWNLOAD_URL = "GET_DOWNLOAD_URL"
+    EXPORT_CSV = "EXPORT_CSV"
+    EXECUTE_SQL = "EXECUTE_SQL"
 
 
 class SortOrder(str, Enum):
@@ -258,17 +264,20 @@ class QueryRequest(BaseModel):
             raise ValueError("'having' clause requires 'group_by'")
         return self
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "operation": "query",
-                "table": "users",
-                "projection": ["id", "name", "email"],
-                "filter": {"status": {"eq": "active"}, "age": {"gte": 18}},
-                "sort": [{"field": "created_at", "order": "desc"}],
-                "limit": 10,
-            }
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "operation": "query",
+                    "table": "users",
+                    "projection": ["id", "name", "email"],
+                    "filter": {"status": {"eq": "active"}, "age": {"gte": 18}},
+                    "sort": [{"field": "created_at", "order": "desc"}],
+                    "limit": 10,
+                }
+            ]
         }
+    }
 
 
 class AggregateRequest(BaseModel):
@@ -293,23 +302,26 @@ class AggregateRequest(BaseModel):
     # Options
     timeout_ms: Optional[int] = Field(60000, gt=0, description="Query timeout in milliseconds")
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "operation": "aggregate",
-                "table": "orders",
-                "filter": {"status": {"eq": "completed"}},
-                "group_by": ["customer_id"],
-                "aggregations": [
-                    {"op": "count", "field": None, "alias": "total_orders"},
-                    {"op": "sum", "field": "amount", "alias": "revenue"},
-                    {"op": "avg", "field": "amount", "alias": "avg_order"},
-                ],
-                "having": {"total_orders": {"gt": 5}},
-                "sort": [{"field": "revenue", "order": "desc"}],
-                "limit": 100,
-            }
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "operation": "aggregate",
+                    "table": "orders",
+                    "filter": {"status": {"eq": "completed"}},
+                    "group_by": ["customer_id"],
+                    "aggregations": [
+                        {"op": "count", "field": None, "alias": "total_orders"},
+                        {"op": "sum", "field": "amount", "alias": "revenue"},
+                        {"op": "avg", "field": "amount", "alias": "avg_order"},
+                    ],
+                    "having": {"total_orders": {"gt": 5}},
+                    "sort": [{"field": "revenue", "order": "desc"}],
+                    "limit": 100,
+                }
+            ]
         }
+    }
 
 
 # ============================================================================
@@ -624,6 +636,34 @@ class HardDeleteResponse(BaseResponse):
 
 
 # ============================================================================
+# Upsert Operations
+# ============================================================================
+
+
+class UpsertRequest(BaseModel):
+    """Upsert request - Update if exists, Insert if not exists"""
+
+    operation: Literal[OperationType.UPSERT] = OperationType.UPSERT
+    tenant_id: str
+    namespace: str = "default"
+    table: str
+    records: List[Dict[str, Any]] = Field(..., description="Records to upsert")
+    filters: Optional[List[Filter]] = Field(None, description="Filter to identify existing records")
+    updates: Optional[Dict[str, Any]] = Field(None, description="Updates to apply to existing records")
+    table_schema: Optional[SchemaDefinition] = Field(None, alias="schema")
+
+
+class UpsertResponseData(BaseModel):
+    records_inserted: int = Field(..., description="Number of new records inserted")
+    records_updated: int = Field(..., description="Number of existing records updated")
+    total_affected: int = Field(..., description="Total number of records affected")
+
+
+class UpsertResponse(BaseResponse):
+    data: Optional[UpsertResponseData] = Field(None, description="Upsert operation results")
+
+
+# ============================================================================
 # Compact Operations
 # ============================================================================
 
@@ -722,6 +762,48 @@ class CreateTableResponse(BaseResponse):
 
 
 # ============================================================================
+# Drop Table Operations
+# ============================================================================
+
+
+class DropTableRequest(BaseModel):
+    operation: Literal[OperationType.DROP_TABLE] = OperationType.DROP_TABLE
+    tenant_id: str
+    namespace: str = "default"
+    table: str
+    purge: bool = Field(False, description="Purge data and metadata")
+
+
+class DropTableResponseData(BaseModel):
+    table_dropped: bool = Field(..., description="Whether table was dropped")
+    table_existed: bool = Field(True, description="Whether table existed")
+
+
+class DropTableResponse(BaseResponse):
+    data: Optional[DropTableResponseData] = Field(None, description="Drop table operation results")
+
+
+# ============================================================================
+# Drop Namespace Operations
+# ============================================================================
+
+
+class DropNamespaceRequest(BaseModel):
+    operation: Literal[OperationType.DROP_NAMESPACE] = OperationType.DROP_NAMESPACE
+    tenant_id: str
+    namespace: str
+
+
+class DropNamespaceResponseData(BaseModel):
+    namespace_dropped: bool = Field(..., description="Whether namespace was dropped")
+    namespace_existed: bool = Field(True, description="Whether namespace existed")
+
+
+class DropNamespaceResponse(BaseResponse):
+    data: Optional[DropNamespaceResponseData] = Field(None, description="Drop namespace operation results")
+
+
+# ============================================================================
 # Describe Table Operations
 # ============================================================================
 
@@ -779,6 +861,100 @@ class DescribeTableResponse(BaseResponse):
     data: Optional[DescribeTableResponseData] = Field(
         None, description="Describe table operation results"
     )
+
+
+# ============================================================================
+# Storage Operations (Upload/Download URLs)
+# ============================================================================
+
+
+class GetUploadUrlRequest(BaseModel):
+    operation: Literal[OperationType.GET_UPLOAD_URL] = OperationType.GET_UPLOAD_URL
+    tenant_id: str
+    filename: str = Field(..., description="Name of the file to upload")
+    content_type: str = Field(..., description="MIME type of the file")
+    folder: Optional[str] = Field(None, description="Optional subfolder")
+    expires_in: int = Field(300, description="URL expiration in seconds")
+
+
+class GetUploadUrlResponseData(BaseModel):
+    upload_url: str = Field(..., description="Presigned PUT URL")
+    file_key: str = Field(..., description="S3 object key")
+    expires_in: int = Field(..., description="Seconds until expiration")
+
+
+class GetUploadUrlResponse(BaseResponse):
+    data: Optional[GetUploadUrlResponseData] = Field(None)
+
+
+class GetDownloadUrlRequest(BaseModel):
+    operation: Literal[OperationType.GET_DOWNLOAD_URL] = OperationType.GET_DOWNLOAD_URL
+    tenant_id: str
+    file_key: str = Field(..., description="S3 object key")
+    expires_in: int = Field(3600, description="URL expiration in seconds")
+
+
+class GetDownloadUrlResponseData(BaseModel):
+    download_url: str = Field(..., description="Presigned GET URL")
+    expires_in: int = Field(..., description="Seconds until expiration")
+
+
+class GetDownloadUrlResponse(BaseResponse):
+    data: Optional[GetDownloadUrlResponseData] = Field(None)
+
+
+# ============================================================================
+# Export CSV Operations
+# ============================================================================
+
+
+class ExportCsvRequest(BaseModel):
+    operation: Literal[OperationType.EXPORT_CSV] = OperationType.EXPORT_CSV
+    tenant_id: str
+    namespace: str = "default"
+    table: str
+    filters: Optional[List[Filter]] = Field(None, description="Filter conditions")
+    projection: Optional[List[str]] = Field(None, description="Columns to export")
+    sort: Optional[List[SortField]] = Field(None, description="Sort order")
+    limit: Optional[int] = Field(None, description="Maximum rows to export")
+    filename: Optional[str] = Field(None, description="Custom filename")
+    include_header: bool = Field(True, description="Include CSV header row")
+    include_deleted: bool = Field(False, description="Include soft-deleted records")
+    expiration_seconds: int = Field(3600, description="Download link expiration in seconds")
+
+
+class ExportCsvResponseData(BaseModel):
+    download_url: str = Field(..., description="Presigned URL to download")
+    rows_exported: int = Field(..., description="Number of rows exported")
+    file_size_bytes: Optional[int] = Field(None, description="File size in bytes")
+    filename: str = Field(..., description="Exported filename")
+    expiration_seconds: int = Field(..., description="Link expiration time")
+
+
+class ExportCsvResponse(BaseResponse):
+    data: Optional[ExportCsvResponseData] = Field(None, description="Export results")
+
+
+# ============================================================================
+# Execute SQL Operations
+# ============================================================================
+
+
+class ExecuteSqlRequest(BaseModel):
+    """Execute raw SQL query"""
+
+    operation: Literal[OperationType.EXECUTE_SQL] = OperationType.EXECUTE_SQL
+    tenant_id: str
+    namespace: str = "default"
+    sql: str = Field(..., description="SQL query to execute")
+    params: Optional[Dict[str, Any]] = Field(None, description="Query parameters")
+    timeout_ms: Optional[int] = Field(30000, description="Query timeout in milliseconds")
+
+
+class ExecuteSqlResponse(BaseResponse):
+    """Execute SQL response — reuses QueryResponseData"""
+
+    data: Optional[QueryResponseData] = Field(None, description="Query results")
 
 
 # Update forward references for new models

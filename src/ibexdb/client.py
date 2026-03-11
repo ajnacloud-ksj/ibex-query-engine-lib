@@ -605,7 +605,7 @@ class IbexDB:
         """
         try:
             response = self.list_tables(tenant_id=tenant_id, namespace=namespace)
-            return table in response.data.tables
+            return response.data is not None and table in response.data.tables
         except Exception:
             return False
 
@@ -628,6 +628,8 @@ class IbexDB:
         """
         try:
             response = self.describe_table(table, tenant_id=tenant_id, namespace=namespace)
+            if response.data is None:
+                return None
             return response.data.table.row_count
         except Exception:
             return None
@@ -645,61 +647,25 @@ class IbexDB:
         """
         Execute raw SQL query on Iceberg tables
 
-        Note: This uses DuckDB's iceberg_scan() function under the hood.
-        For complex queries or joins across sources, use FederatedQueryEngine instead.
+        Uses the pre-configured DuckDB connection with Iceberg extension.
+        For cross-source queries (Iceberg + Postgres + MySQL), use FederatedQueryEngine.
 
         Args:
             sql: SQL query string
-            tenant_id: Override tenant_id
-            namespace: Override namespace
+            tenant_id: Override tenant_id (unused, kept for API compat)
+            namespace: Override namespace (unused, kept for API compat)
 
         Returns:
             List of result records
-
-        Example:
-            ```python
-            results = db.execute_sql(\"\"\"
-                SELECT status, COUNT(*) as total, AVG(age) as avg_age
-                FROM users
-                WHERE age >= 18
-                GROUP BY status
-                ORDER BY total DESC
-            \"\"\")
-            ```
         """
-        import duckdb
-
-        # Initialize DuckDB connection
-        conn = duckdb.connect(":memory:")
-
-        # Load required extensions
         try:
-            conn.execute("INSTALL iceberg;")
-            conn.execute("LOAD iceberg;")
-            conn.execute("INSTALL httpfs;")
-            conn.execute("LOAD httpfs;")
-        except Exception as e:
-            logger.warning(f"Extension loading failed: {e}")
-
-        # Configure S3 access
-        s3_config = self._config.s3
-        conn.execute(f"SET s3_endpoint='{s3_config.get('endpoint', '')}';")
-        conn.execute(f"SET s3_region='{s3_config.get('region', 'us-east-1')}';")
-
-        if "access_key_id" in s3_config:
-            conn.execute(f"SET s3_access_key_id='{s3_config['access_key_id']}';")
-            conn.execute(f"SET s3_secret_access_key='{s3_config['secret_access_key']}';")
-
-        # Execute query
-        try:
-            result = conn.execute(sql)
+            result = self._ops.conn.execute(sql)
             columns = [desc[0] for desc in result.description]
             rows = result.fetchall()
-
-            # Convert to list of dicts
-            return [{col: val for col, val in zip(columns, row)} for row in rows]
-        finally:
-            conn.close()
+            return [dict(zip(columns, row)) for row in rows]
+        except Exception as e:
+            logger.error(f"SQL execution failed: {e}")
+            raise
 
     def __repr__(self) -> str:
         return f"IbexDB(tenant_id='{self.tenant_id}', namespace='{self.namespace}')"

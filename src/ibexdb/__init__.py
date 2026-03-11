@@ -5,7 +5,7 @@ A Python library for building production-ready data applications on S3
 with full ACID guarantees, time-travel, and schema evolution.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __author__ = "Ajna Team"
 __license__ = "MIT"
 
@@ -37,10 +37,22 @@ from ibexdb.models import (  # noqa: E402
     DeleteResponse,
     DescribeTableRequest,
     DescribeTableResponse,
+    DropNamespaceRequest,
+    DropNamespaceResponse,
+    DropTableRequest,
+    DropTableResponse,
+    ExecuteSqlRequest,
+    ExecuteSqlResponse,
+    ExportCsvRequest,
+    ExportCsvResponse,
     FieldDefinition,
     FieldType,
     # Supporting models
     Filter,
+    GetDownloadUrlRequest,
+    GetDownloadUrlResponse,
+    GetUploadUrlRequest,
+    GetUploadUrlResponse,
     HardDeleteRequest,
     HardDeleteResponse,
     ListTablesRequest,
@@ -59,6 +71,8 @@ from ibexdb.models import (  # noqa: E402
     TableProperties,
     UpdateRequest,
     UpdateResponse,
+    UpsertRequest,
+    UpsertResponse,
     WriteMode,
     WriteRequest,
     WriteResponse,
@@ -86,20 +100,34 @@ __all__ = [
     "UpdateRequest",
     "DeleteRequest",
     "HardDeleteRequest",
+    "UpsertRequest",
     "CompactRequest",
     "CreateTableRequest",
+    "DropTableRequest",
+    "DropNamespaceRequest",
     "ListTablesRequest",
     "DescribeTableRequest",
+    "GetUploadUrlRequest",
+    "GetDownloadUrlRequest",
+    "ExportCsvRequest",
+    "ExecuteSqlRequest",
     # Response Models
     "QueryResponse",
     "WriteResponse",
     "UpdateResponse",
     "DeleteResponse",
     "HardDeleteResponse",
+    "UpsertResponse",
     "CompactResponse",
     "CreateTableResponse",
+    "DropTableResponse",
+    "DropNamespaceResponse",
     "ListTablesResponse",
     "DescribeTableResponse",
+    "GetUploadUrlResponse",
+    "GetDownloadUrlResponse",
+    "ExportCsvResponse",
+    "ExecuteSqlResponse",
     # Supporting Models
     "Filter",
     "SortField",

@@ -3,79 +3,19 @@ name: Build and Publish
 on:
   push:
     branches: [ main ]
-    tags:
-      - 'v*'
-  workflow_dispatch:  # Allow manual trigger
+    paths:
+      - 'src/ibexdb/**'
+      - 'pyproject.toml'
+  workflow_dispatch:
 
 permissions:
   contents: write
   actions: write
 
 jobs:
-  build:
-    name: Build Python Package
-    runs-on: ubuntu-latest
-    
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # Fetch all history for versioning
-      
-      - name: Generate version tag
-        id: version
-        run: |
-          # Get current version from pyproject.toml
-          VERSION=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
-          
-          # Get commit count to create unique build number
-          COMMIT_COUNT=$(git rev-list --count HEAD)
-          
-          # Create version tag: v{version}.{commit_count}
-          TAG="v${VERSION}.${COMMIT_COUNT}"
-          
-          echo "tag=${TAG}" >> $GITHUB_OUTPUT
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          echo "Generated tag: ${TAG}"
-      
-      - name: Create and push tag
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a ${{ steps.version.outputs.tag }} -m "Auto-release ${{ steps.version.outputs.tag }}"
-          git push origin ${{ steps.version.outputs.tag }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-        with:
-          enable-cache: false
-      
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      
-      - name: Build package
-        run: |
-          uv build
-      
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: python-package-distributions
-          path: dist/
-          retention-days: 90
-      
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          name: Release ${{ steps.version.outputs.tag }}
-          files: dist/*
-          generate_release_notes: true
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+  publish:
+    uses: ajnacloud-ksj/ajna-github-workflows/.github/workflows/reusable-python-publish.yml@main
+    with:
+      python-version: '3.12'
+      uv-cache: false
+    secrets: inherit
