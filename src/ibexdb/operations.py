@@ -419,7 +419,9 @@ class FullIcebergOperations:
                     return CreateTableResponse(
                         success=False,
                         data=None,
-                        metadata=ResponseMetadata(request_id=str(uuid.uuid4()), execution_time_ms=0),
+                        metadata=ResponseMetadata(
+                            request_id=str(uuid.uuid4()), execution_time_ms=0
+                        ),
                         error=ErrorDetail(code="TABLE_EXISTS", message="Table already exists"),
                     )
                 from .models import CreateTableResponseData, ResponseMetadata
@@ -796,10 +798,7 @@ class FullIcebergOperations:
             rows = result.fetchall()
 
             # Convert to list of records, removing the 'rn' column added by ROW_NUMBER
-            records = [
-                {k: v for k, v in zip(columns, row) if k != "rn"}
-                for row in rows
-            ]
+            records = [{k: v for k, v in zip(columns, row) if k != "rn"} for row in rows]
 
             # If no records found, return success with 0 updates
             if not records:

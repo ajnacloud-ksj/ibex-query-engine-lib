@@ -649,7 +649,9 @@ class UpsertRequest(BaseModel):
     table: str
     records: List[Dict[str, Any]] = Field(..., description="Records to upsert")
     filters: Optional[List[Filter]] = Field(None, description="Filter to identify existing records")
-    updates: Optional[Dict[str, Any]] = Field(None, description="Updates to apply to existing records")
+    updates: Optional[Dict[str, Any]] = Field(
+        None, description="Updates to apply to existing records"
+    )
     table_schema: Optional[SchemaDefinition] = Field(None, alias="schema")
 
 
@@ -800,7 +802,9 @@ class DropNamespaceResponseData(BaseModel):
 
 
 class DropNamespaceResponse(BaseResponse):
-    data: Optional[DropNamespaceResponseData] = Field(None, description="Drop namespace operation results")
+    data: Optional[DropNamespaceResponseData] = Field(
+        None, description="Drop namespace operation results"
+    )
 
 
 # ============================================================================

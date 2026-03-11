@@ -110,8 +110,8 @@ class FederatedQueryEngine:
 
     def __init__(
         self,
-        duckdb_path: str = ':memory:',
-        config_manager: Optional[DataSourceConfigManager] = None
+        duckdb_path: str = ":memory:",
+        config_manager: Optional[DataSourceConfigManager] = None,
     ):
         """
         Initialize federated query engine
@@ -130,6 +130,7 @@ class FederatedQueryEngine:
 
         # Initialize IbexDB operations engine (tenant_id will be per-request)
         from ibexdb.operations import FullIcebergOperations as DatabaseOperations
+
         self._db_ops = DatabaseOperations()
 
         self._setup_duckdb()
@@ -231,7 +232,9 @@ class FederatedQueryEngine:
         logger.info(f"✅ Added source: {source_id} ({source_type})")
         return self
 
-    def _connect_postgres_with_config(self, source_config: DataSourceConfig, connection_config: Dict[str, Any]):
+    def _connect_postgres_with_config(
+        self, source_config: DataSourceConfig, connection_config: Dict[str, Any]
+    ):
         """Connect to PostgreSQL source with explicit connection config"""
         schema_name = source_config.source_id.replace("-", "_")
 
@@ -249,7 +252,9 @@ class FederatedQueryEngine:
             logger.error(f"❌ Failed to connect PostgreSQL: {e}")
             raise
 
-    def _connect_mysql_with_config(self, source_config: DataSourceConfig, connection_config: Dict[str, Any]):
+    def _connect_mysql_with_config(
+        self, source_config: DataSourceConfig, connection_config: Dict[str, Any]
+    ):
         """Connect to MySQL source with explicit connection config"""
         schema_name = source_config.source_id.replace("-", "_")
 
@@ -267,7 +272,9 @@ class FederatedQueryEngine:
             logger.error(f"❌ Failed to connect MySQL: {e}")
             raise
 
-    def _connect_ibexdb_with_config(self, source_config: DataSourceConfig, connection_config: Dict[str, Any]):
+    def _connect_ibexdb_with_config(
+        self, source_config: DataSourceConfig, connection_config: Dict[str, Any]
+    ):
         """Connect to IbexDB source with explicit connection config"""
         # For IbexDB, we don't need to do anything special
         # The connection is handled by the DatabaseOperations instance
@@ -866,8 +873,9 @@ class FederatedQueryEngine:
 
         try:
             result = self.conn.execute(sql, params)
-            records = [dict(zip([col[0] for col in result.description], row))
-                      for row in result.fetchall()]
+            records = [
+                dict(zip([col[0] for col in result.description], row)) for row in result.fetchall()
+            ]
 
             return QueryResponse(
                 success=True,
@@ -876,21 +884,20 @@ class FederatedQueryEngine:
                     query_metadata=QueryMetadata(
                         row_count=len(records),
                         execution_time_ms=0.0,  # TODO: Track actual execution time
-                        query_id=sql  # Include generated SQL for debugging
-                    )
+                        query_id=sql,  # Include generated SQL for debugging
+                    ),
                 ),
-                metadata=ResponseMetadata(request_id="federated-query", execution_time_ms=0.0)
+                metadata=ResponseMetadata(request_id="federated-query", execution_time_ms=0.0),
             )
         except Exception as e:
             logger.error(f"❌ Query failed: {e}")
             logger.error(f"SQL: {sql}")
             return QueryResponse(
                 success=False,
-                error=ErrorDetail(
-                    code="QUERY_ERROR",
-                    message=str(e)
-                ),
-                metadata=ResponseMetadata(request_id="federated-query", execution_time_ms=0.0)  # Add required fields
+                error=ErrorDetail(code="QUERY_ERROR", message=str(e)),
+                metadata=ResponseMetadata(
+                    request_id="federated-query", execution_time_ms=0.0
+                ),  # Add required fields
             )
 
     def _resolve_table_name(self, table: str) -> str:
@@ -957,7 +964,11 @@ class FederatedQueryEngine:
                 join_table = self._resolve_table_name(join_clause.table)
 
                 # Join type
-                join_type = join_clause.type.value.upper() if hasattr(join_clause.type, 'value') else join_clause.type.upper()
+                join_type = (
+                    join_clause.type.value.upper()
+                    if hasattr(join_clause.type, "value")
+                    else join_clause.type.upper()
+                )
                 sql += f" {join_type} JOIN {join_table}"
 
                 # Join table alias
@@ -968,9 +979,18 @@ class FederatedQueryEngine:
                 if join_clause.on:
                     on_conditions = []
                     for condition in join_clause.on:
-                        op_map = {"eq": "=", "ne": "!=", "gt": ">", "gte": ">=", "lt": "<", "lte": "<="}
+                        op_map = {
+                            "eq": "=",
+                            "ne": "!=",
+                            "gt": ">",
+                            "gte": ">=",
+                            "lt": "<",
+                            "lte": "<=",
+                        }
                         operator = op_map.get(condition.operator or "eq", "=")
-                        on_conditions.append(f"{condition.left_field} {operator} {condition.right_field}")
+                        on_conditions.append(
+                            f"{condition.left_field} {operator} {condition.right_field}"
+                        )
                     sql += f" ON {' AND '.join(on_conditions)}"
 
         # WHERE clause
@@ -986,7 +1006,7 @@ class FederatedQueryEngine:
                     "lt": "<",
                     "lte": "<=",
                     "in": "IN",
-                    "like": "LIKE"
+                    "like": "LIKE",
                 }
                 operator = op_map.get(f.operator, f.operator)
 
@@ -1016,7 +1036,10 @@ class FederatedQueryEngine:
 
         # ORDER BY clause
         if request.sort:
-            order_by = [f"{s.field} {s.order.upper() if hasattr(s.order, 'upper') else s.order.value.upper()}" for s in request.sort]
+            order_by = [
+                f"{s.field} {s.order.upper() if hasattr(s.order, 'upper') else s.order.value.upper()}"
+                for s in request.sort
+            ]
             sql += f" ORDER BY {', '.join(order_by)}"
 
         # DISTINCT
@@ -1031,11 +1054,9 @@ class FederatedQueryEngine:
 
         return sql, params
 
-
     def query_iceberg(self, request):
         """Delegate query to DatabaseOperations for Iceberg tables (supports per-request tenant_id)"""
         return self._db_ops.query(request)
-
 
 
 # ============================================================================
